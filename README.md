@@ -1,22 +1,16 @@
-# RNA-seq Tools
-
-Python interface for STAR alignment and Salmon quantification.
-
 ## Installation
 
 pip install -e .
 
 ## Usage
-
+rskit --help
 ### Command Line
 
-rnaseq-tools star-index genome.fa annotation.gtf index_dir --threads 56
-rnaseq-tools star-align index_dir reads_1.fq reads_2.fq output_prefix --threads 56
-rnaseq-tools salmon-quant transcripts.fa aligned.bam output_dir --threads 56
+rskit quant -s ${i} -1 ../${i}_1 -2 ../${i}_2 --index-dir ../STAR_Gmax_index/  -t 96 -g ../Gmax_508_Wm82.a4.v1.fa -gtf ../Gmax_508_Wm82.a4.v1.gene_exons.gff3.gtf -gf ../gffread_transcript.fa  -o data/
 
 ### Python API
 
-from rnaseq_tools import RNAseqPipeline, PipelineConfig
+from rskit import RNAseqPipeline, PipelineConfig
 
 config = PipelineConfig()
 pipeline = RNAseqPipeline(config)
