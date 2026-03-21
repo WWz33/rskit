@@ -134,16 +134,32 @@ class Deseq2Analyzer:
             tx2gene_file = output_path / "tx2gene.tsv"
             tx2gene_map.to_csv(tx2gene_file, sep='\t', index=False)
             self.logger.info(f"Saved tx2gene mapping to {tx2gene_file}")
+        else:
+            self.logger.warning("output_dir is None, skipping tx2gene save")
         
         # Run tximport
         self.logger.info(f"Running pytximport on {len(file_paths)} samples...")
-        results = tximport(
-            file_paths=file_paths,
-            data_type="salmon",
-            transcript_gene_map=tx2gene_map,
-            counts_from_abundance="length_scaled_tpm",
-            output_type="dict"
-        )
+        try:
+            results = tximport(
+                file_paths=file_paths,
+                data_type="salmon",
+                transcript_gene_map=tx2gene_map,
+                counts_from_abundance="length_scaled_tpm",
+                output_type="dict"
+            )
+        except AssertionError as e:
+            self.logger.error(f"pytximport failed: {e}")
+            self.logger.error(f"tx2gene map has {len(tx2gene_map)} entries")
+            # Check for duplicates in tx2gene
+            dup_count = tx2gene_map['transcript_id'].duplicated().sum()
+            self.logger.error(f"Duplicate transcript_ids in tx2gene: {dup_count}")
+            if output_dir:
+                # Save duplicate info
+                dups = tx2gene_map[tx2gene_map['transcript_id'].duplicated(keep=False)]
+                dup_file = Path(output_dir) / "tx2gene_duplicates.tsv"
+                dups.to_csv(dup_file, sep='\t', index=False)
+                self.logger.error(f"Saved duplicates to {dup_file}")
+            raise
         
         # Extract counts matrix
         counts_matrix = results["counts"]
