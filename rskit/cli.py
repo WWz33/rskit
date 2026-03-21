@@ -51,16 +51,23 @@ def trim_reads(read1, read2, sample, clean_data_dir, html_dir, json_dir, threads
 
 def main_quant(args):
     """Run quantification pipeline"""
+    from rskit.utils.validators import check_and_prepare_index
+    
     # Convert paths to absolute before changing directory
-    r1 = Path(args.r1).resolve()
-    r2 = Path(args.r2).resolve()
+    r1 = Path(args.r1).resolve() if args.r1 else None
+    r2 = Path(args.r2).resolve() if args.r2 else None
     genome_fasta = Path(args.genome_fasta).resolve()
     gtf_file = Path(args.gtf_file).resolve()
     transcript_fasta = Path(args.transcript_fasta).resolve()
-    index_dir = Path(args.index_dir).resolve()
     
     # Setup work directory
     workdirs = setup_workdir(args.output_dir)
+    
+    # Determine and check index directory
+    if args.index_dir:
+        index_dir, needs_build = check_and_prepare_index(args.index_dir, args.force_index)
+    else:
+        index_dir, needs_build = check_and_prepare_index(workdirs['index'], args.force_index)
     
     # Parse samples
     if args.coldata:
@@ -161,6 +168,8 @@ def main_wgcna(args):
 
 def main_all(args):
     """Run complete pipeline: quant -> deseq2"""
+    from rskit.utils.validators import check_and_prepare_index
+    
     logger.info("="*60)
     logger.info("Complete Pipeline: Quantification + DESeq2")
     logger.info("="*60)
@@ -169,11 +178,16 @@ def main_all(args):
     genome_fasta = Path(args.genome_fasta).resolve()
     gtf_file = Path(args.gtf_file).resolve()
     transcript_fasta = Path(args.transcript_fasta).resolve()
-    index_dir = Path(args.index_dir).resolve()
     coldata_file = Path(args.coldata).resolve()
     
     # Setup work directory
     workdirs = setup_workdir(args.output_dir)
+    
+    # Determine and check index directory
+    if args.index_dir:
+        index_dir, needs_build = check_and_prepare_index(args.index_dir, args.force_index)
+    else:
+        index_dir, needs_build = check_and_prepare_index(workdirs['index'], args.force_index)
     
     # Parse samples from coldata
     sep = '\t' if str(coldata_file).endswith('.tsv') else ','
@@ -264,13 +278,13 @@ def main():
     
     parser_quant.add_argument("-s", "--sample", help="Sample name")
     parser_quant.add_argument("-S", "--coldata", help="Sample file (CSV/TSV) with columns: sample, r1, r2 (and optionally id, condition). Auto-detects separator based on file extension (.tsv for tab, .csv for comma)")
-    parser_quant.add_argument("-1", "--r1", required=True, help="First read file")
-    parser_quant.add_argument("-2", "--r2", required=True, help="Second read file")
+    parser_quant.add_argument("-1", "--r1", help="First read file")
+    parser_quant.add_argument("-2", "--r2", help="Second read file")
     parser_quant.add_argument("-g", "--genome-fasta", dest="genome_fasta", required=True, help="Genome FASTA file")
     parser_quant.add_argument("-gtf", "--gtf-file", dest="gtf_file", required=True, help="GTF annotation file")
     parser_quant.add_argument("-gf", "--transcript-fasta", dest="transcript_fasta", required=True, help="Transcript FASTA file")
     parser_quant.add_argument("-o", "--output-dir", dest="output_dir", required=True, help="Output directory (work directory)")
-    parser_quant.add_argument("--index-dir", dest="index_dir", default="STAR_index", help="STAR index directory")
+    parser_quant.add_argument("-idx", "--index-dir", dest="index_dir", help="STAR index directory (default: <output_dir>/00_index)")
     parser_quant.add_argument("-t", "--threads", type=int, default=8, help="Number of threads")
     parser_quant.add_argument("--trim", action="store_true", help="Trim reads with fastp")
     parser_quant.add_argument("--force-index", action="store_true", help="Force rebuild index")
@@ -432,8 +446,8 @@ Examples:
         help="Output directory (work directory)")
     
     # Optional arguments
-    parser_all.add_argument("--index-dir", dest="index_dir", default="STAR_index",
-        help="STAR index directory")
+    parser_all.add_argument("-idx", "--index-dir", dest="index_dir",
+        help="STAR index directory (default: <output_dir>/00_index)")
     parser_all.add_argument("-t2g", "--tx2gene", dest="tx2gene",
         help="Path to transcript-to-gene mapping file (CSV/TSV with transcript_id,gene_id columns)")
     parser_all.add_argument("-t", "--threads", type=int, default=8,

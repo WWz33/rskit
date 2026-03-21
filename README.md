@@ -110,8 +110,8 @@ Complete pipeline: quantification + DESeq2 analysis.
 | `-g, --genome-fasta` | Genome FASTA file (required) |
 | `-gtf, --gtf-file` | GTF annotation file (required) |
 | `-gf, --transcript-fasta` | Transcript FASTA file (required) |
-| `-o, --output-dir` | Output directory (required) |
-| `--index-dir` | STAR index directory (default: STAR_index) |
+| `-o, --output-dir` | Output directory (work directory, required) |
+| `-idx, --index-dir` | STAR index directory (default: `<output_dir>/00_index`) |
 | `-t2g, --tx2gene` | Transcript-to-gene mapping file |
 | `-t, --threads` | Number of threads (default: 8) |
 | `--trim` | Trim reads with fastp |
@@ -119,6 +119,10 @@ Complete pipeline: quantification + DESeq2 analysis.
 | `--design` | Design formula (default: ~condition) |
 | `--contrast` | Contrast specification (e.g., 'condition,treatment,control') |
 | `--alpha` | Significance threshold (default: 0.05) |
+
+> **Note**: 
+> - If `--index-dir` is not specified, index will be stored in `<output_dir>/00_index/`
+> - If a valid STAR index exists, it will be reused automatically (use `--force-index` to rebuild)
 
 ### rskit quant
 
@@ -134,10 +138,14 @@ Complete quantification pipeline (index → align → quant).
 | `-gtf, --gtf-file` | GTF annotation file (required) |
 | `-gf, --transcript-fasta` | Transcript FASTA file (required) |
 | `-o, --output-dir` | Output directory (required) |
-| `--index-dir` | STAR index directory (default: STAR_index) |
+| `-idx, --index-dir` | STAR index directory (default: `<output_dir>/00_index`) |
 | `-t, --threads` | Number of threads (default: 8) |
 | `--trim` | Trim reads with fastp |
 | `--force-index` | Force rebuild index |
+
+> **Note**: 
+> - If `--index-dir` is not specified, index will be stored in `<output_dir>/00_index/`
+> - If a valid STAR index exists, it will be reused automatically (use `--force-index` to rebuild)
 
 ### rskit deseq2
 
@@ -258,12 +266,12 @@ analyzer.save_results()
 
 ### Complete Pipeline Output (rskit all)
 ```
-results/
-├── 00_index/          # STAR index
-├── 01_clean_data/     # Trimmed reads (if --trim)
-├── 02_bam/           # Aligned BAM files
-├── 03_quant/         # Salmon quantification
-└── 04_deseq2/        # DESeq2 results
+results/                 # -o 指定的输出目录
+├── 00_index/            # STAR index (自动创建)
+├── 01_clean_data/       # Trimmed reads (if --trim)
+├── 02_bam/              # Aligned BAM files
+├── 03_quant/            # Salmon quantification
+└── 04_deseq2/           # DESeq2 results
 ```
 
 ### DESeq2 Output
