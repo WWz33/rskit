@@ -17,48 +17,44 @@ class Deseq2Analyzer:
         self.metadata_df = None
         
     def _create_tx2gene_from_gtf(self, gtf_file: str) -> pd.DataFrame:
-        """Create transcript-to-gene mapping from GTF file.
+        """Create transcript-to-gene mapping from GTF/GFF file.
         
-        Parses GTF file locally without requiring BioMart connection.
+        Uses the project's gtf.py module for parsing.
         
         Args:
-            gtf_file: Path to GTF annotation file
+            gtf_file: Path to GTF/GFF annotation file
             
         Returns:
-            DataFrame with transcript_id and gene_id columns
+            DataFrame with transcript_id and gene_id columns (deduplicated)
         """
-        self.logger.info(f"Parsing GTF file: {gtf_file}")
+        from rskit.utils import gtf
+        
+        self.logger.info(f"Parsing GTF/GFF file: {gtf_file}")
         
         tx2gene_dict = {}
         
-        with open(gtf_file, 'r') as f:
-            for line in f:
-                if line.startswith('#'):
-                    continue
-                
-                fields = line.strip().split('\t')
-                if len(fields) < 9:
-                    continue
-                
-                # Parse attributes
-                attributes = {}
-                for attr in fields[8].split(';'):
-                    attr = attr.strip()
-                    if not attr:
-                        continue
-                    # Handle both "key value" and "key "value"" formats
-                    parts = attr.split(' ', 1)
-                    if len(parts) == 2:
-                        key = parts[0].strip()
-                        value = parts[1].strip().strip('"')
-                        attributes[key] = value
-                
-                # Extract transcript_id and gene_id
-                transcript_id = attributes.get('transcript_id')
-                gene_id = attributes.get('gene_id')
-                
-                if transcript_id and gene_id and transcript_id not in tx2gene_dict:
-                    tx2gene_dict[transcript_id] = gene_id
+        with open(gtf_file, 'r', encoding='utf-8', errors='ignore') as reader:
+            for rec in gtf.open(reader, 'ensembl'):
+                # Only process transcript features
+                if rec.feature == 'transcript':
+                    if rec.transcript_id and rec.gene_id:
+                        tx2gene_dict[rec.transcript_id] = rec.gene_id
+        
+        # If no 'transcript' feature found, try other common feature types
+        if not tx2gene_dict:
+            self.logger.info("No 'transcript' features found, trying 'mRNA' for GFF3 format...")
+            with open(gtf_file, 'r', encoding='utf-8', errors='ignore') as reader:
+                for rec in gtf.open(reader):
+                    if rec.feature in ['mRNA', 'transcript', 'primary_transcript']:
+                        # For GFF3, ID is transcript_id, Parent is gene_id
+                        tx_id = rec.meta.get('ID') or rec.meta.get('transcript_id')
+                        gene_id = rec.meta.get('Parent') or rec.meta.get('gene_id')
+                        
+                        if tx_id and gene_id:
+                            # Clean up GFF3 IDs (remove prefixes like 'gene:')
+                            if gene_id.startswith('gene:'):
+                                gene_id = gene_id[5:]
+                            tx2gene_dict[tx_id] = gene_id
         
         # Create DataFrame
         tx2gene_df = pd.DataFrame(
@@ -66,7 +62,11 @@ class Deseq2Analyzer:
             columns=['transcript_id', 'gene_id']
         )
         
-        self.logger.info(f"Created tx2gene map with {len(tx2gene_df)} transcripts")
+        # Remove any duplicates and reset index
+        tx2gene_df = tx2gene_df.drop_duplicates(subset=['transcript_id'], keep='first')
+        tx2gene_df = tx2gene_df.reset_index(drop=True)
+        
+        self.logger.info(f"Created tx2gene map with {len(tx2gene_df)} unique transcripts")
         return tx2gene_df
     
     def load_counts_from_salmon(self, salmon_dir: str, coldata: pd.DataFrame, 
