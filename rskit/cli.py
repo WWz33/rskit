@@ -69,12 +69,13 @@ def trim_reads(read1: Path, read2: Path, sample: str, workdirs: Dict[str, Path],
         '-j', str(workdirs['clean_data_json'] / sample) + '.json',
         '-h', str(workdirs['clean_data_html'] / sample) + '.html'
     ]
-    logger.info(f"Running: {' '.join(cmd)}")
-    subprocess.run(cmd, check=True)
+    logger.info(f"[{sample}] Trimming...")
+    subprocess.run(cmd, check=True, capture_output=True)
+    logger.info(f"[{sample}] Trimming completed")
     return str(prefix) + '_1.fq', str(prefix) + '_2.fq'
 
 
-def parse_samples_from_coldata(coldata: str) -> List[Tuple[str, Path, Path]]:
+def parse_samples_from_coldata(coldata: str):
     """Parse samples from coldata file"""
     sep = '\t' if coldata.endswith('.tsv') else ','
     samples_df = pd.read_csv(coldata, sep=sep)
@@ -85,17 +86,42 @@ def parse_samples_from_coldata(coldata: str) -> List[Tuple[str, Path, Path]]:
             for _, row in samples_df.iterrows()]
 
 
+def trim_sample_wrapper(args):
+    """Wrapper for parallel trimming"""
+    sample_name, r1_path, r2_path, workdirs, threads = args
+    r1_clean, r2_clean = trim_reads(r1_path, r2_path, sample_name, workdirs, threads)
+    return sample_name, r1_clean, r2_clean
+
+
 def prepare_samples(samples_list, workdirs: Dict[str, Path], 
-                    trim: bool, threads: int) -> Dict[str, Dict]:
+                    trim: bool, threads: int, parallel: bool = False) -> Dict[str, Dict]:
     """Prepare samples dict with optional trimming"""
-    samples = {}
-    for sample_name, r1_path, r2_path in samples_list:
-        if trim:
-            logger.info(f"Trimming {sample_name}...")
-            r1_clean, r2_clean = trim_reads(r1_path, r2_path, sample_name, workdirs, threads)
-            samples[sample_name] = {'fq1': r1_clean, 'fq2': r2_clean}
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    if trim:
+        if parallel and len(samples_list) > 1:
+            # Parallel trimming
+            num_samples = len(samples_list)
+            logger.info(f"Parallel trimming: {num_samples} samples")
+            
+            trim_args = [(name, r1, r2, workdirs, threads) for name, r1, r2 in samples_list]
+            
+            samples = {}
+            with ThreadPoolExecutor(max_workers=num_samples) as executor:
+                futures = {executor.submit(trim_sample_wrapper, args): args[0] for args in trim_args}
+                for i, future in enumerate(as_completed(futures), 1):
+                    sample_name, r1_clean, r2_clean = future.result()
+                    samples[sample_name] = {'fq1': r1_clean, 'fq2': r2_clean}
+                    logger.info(f"Trim progress: {i}/{num_samples} completed")
         else:
-            samples[sample_name] = {'fq1': str(r1_path), 'fq2': str(r2_path)}
+            # Sequential trimming
+            samples = {}
+            for sample_name, r1_path, r2_path in samples_list:
+                r1_clean, r2_clean = trim_reads(r1_path, r2_path, sample_name, workdirs, threads)
+                samples[sample_name] = {'fq1': r1_clean, 'fq2': r2_clean}
+    else:
+        samples = {name: {'fq1': str(r1), 'fq2': str(r2)} for name, r1, r2 in samples_list}
+    
     return samples
 
 
@@ -163,16 +189,17 @@ def main_quant(args):
     
     # Calculate threads per sample
     num_samples = len(samples_list)
-    if args.parallel:
+    use_parallel = args.parallel is not None and num_samples > 1
+    if use_parallel:
         threads_per_sample = calculate_threads_per_sample(args.parallel, num_samples)
         logger.info(f"Parallel: {args.parallel} cores / {num_samples} samples = {threads_per_sample} threads/sample")
     else:
         threads_per_sample = args.threads
     
     # Prepare and run samples
-    samples = prepare_samples(samples_list, workdirs, args.trim, threads_per_sample)
+    samples = prepare_samples(samples_list, workdirs, args.trim, threads_per_sample, parallel=use_parallel)
     results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
-                                 index_dir, workdirs, threads_per_sample, args.parallel)
+                                 index_dir, workdirs, threads_per_sample, use_parallel)
     
     logger.info(f"Pipeline completed. Processed {len(results)} samples.")
 
@@ -250,7 +277,8 @@ def main_all(args):
     
     # Calculate threads per sample
     num_samples = len(samples_list)
-    if args.parallel:
+    use_parallel = args.parallel is not None and num_samples > 1
+    if use_parallel:
         threads_per_sample = calculate_threads_per_sample(args.parallel, num_samples)
         logger.info(f"Parallel: {args.parallel} cores / {num_samples} samples = {threads_per_sample} threads/sample")
     else:
@@ -261,9 +289,9 @@ def main_all(args):
     logger.info("Step 1: Quantification Pipeline")
     logger.info("="*60)
     
-    samples = prepare_samples(samples_list, workdirs, args.trim, threads_per_sample)
+    samples = prepare_samples(samples_list, workdirs, args.trim, threads_per_sample, parallel=use_parallel)
     results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
-                                 index_dir, workdirs, threads_per_sample, args.parallel)
+                                 index_dir, workdirs, threads_per_sample, use_parallel)
     logger.info(f"Quantification completed. Processed {len(results)} samples.")
     
     # Step 2: Run DESeq2
