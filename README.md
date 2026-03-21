@@ -52,11 +52,24 @@ rskit quant -S samples.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -
 ```
 
 **Sample sheet format** (CSV or TSV):
+
+Basic format (quant only):
 ```csv
 sample,r1,r2
 sample1,sample1_R1.fq.gz,sample1_R2.fq.gz
 sample2,sample2_R1.fq.gz,sample2_R2.fq.gz
 ```
+
+Extended format (compatible with both quant and deseq2):
+```csv
+sample,id,condition,r1,r2
+sample1,ctrl,control,sample1_R1.fq.gz,sample1_R2.fq.gz
+sample2,ctrl,control,sample2_R1.fq.gz,sample2_R2.fq.gz
+sample3,treat,treatment,sample3_R1.fq.gz,sample3_R2.fq.gz
+sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
+```
+
+> **Note**: The extended format with `id` and `condition` columns can be used directly as coldata for deseq2 analysis after quantification.
 
 ### 2. Differential Expression Analysis
 
@@ -71,13 +84,24 @@ rskit deseq2 --gene-counts counts.csv --coldata coldata.csv
 ```
 
 **Coldata format** (CSV):
+
+Basic format (deseq2 only):
 ```csv
-sample,condition
-sample1,control
-sample2,control
-sample3,treatment
-sample4,treatment
+sample,id,condition
+sample1,ctrl,control
+sample2,ctrl,control
+sample3,treat,treatment
+sample4,treat,treatment
 ```
+
+> **Tip**: Use the same CSV file for both quant and deseq2 by including `r1` and `r2` columns:
+> ```csv
+> sample,id,condition,r1,r2
+> sample1,ctrl,control,sample1_R1.fq.gz,sample1_R2.fq.gz
+> sample2,ctrl,control,sample2_R1.fq.gz,sample2_R2.fq.gz
+> sample3,treat,treatment,sample3_R1.fq.gz,sample3_R2.fq.gz
+> sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
+> ```
 
 **Advanced options:**
 ```bash
@@ -122,11 +146,22 @@ sample2,11.8,9.1,14.8
 ```
 
 Sample metadata (CSV):
+
+Basic format:
 ```csv
-sample,condition,batch
-sample1,control,A
-sample2,treatment,B
+sample,condition
+sample1,control
+sample2,treatment
 ```
+
+Extended format (compatible with deseq2):
+```csv
+sample,id,condition
+sample1,ctrl,control
+sample2,treat,treatment
+```
+
+> **Note**: The sample metadata format is compatible with deseq2 coldata. You can use the same file for both analyses.
 
 Gene metadata (CSV):
 ```csv
@@ -218,7 +253,8 @@ results = pipeline.run(
     gtf_file="annotation.gtf",
     transcript_fasta="transcripts.fa",
     index_dir="STAR_index",
-    output_dir="results"
+    output_dir="results/02_bam",
+    quant_output_dir="results/03_quant"
 )
 ```
 
@@ -304,6 +340,8 @@ wgcna_results/
 - **Gene expression matrix**: Rows = samples, Columns = genes
 - **Sample metadata**: First column should contain sample identifiers matching the expression matrix
 - **Gene metadata**: First column should contain gene identifiers matching the expression matrix columns
+- **Unified sample sheet**: Use a single CSV with columns `sample,id,condition,r1,r2` for both quant and deseq2 workflows
+- **Cross-tool compatibility**: Sample metadata files (coldata) are compatible between deseq2 and wgcna - use `sample,id,condition` format for both
 
 ## Citation
 
