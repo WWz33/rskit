@@ -27,14 +27,14 @@ class Deseq2Analyzer:
         Returns:
             DataFrame with transcript_id and gene_id columns (deduplicated)
         """
-        from rskit.utils import gtf
+        from rskit.utils.gtf import open as gtf_open
         
         self.logger.info(f"Parsing GTF/GFF file: {gtf_file}")
         
         tx2gene_dict = {}
         
         with open(gtf_file, 'r', encoding='utf-8', errors='ignore') as reader:
-            for rec in gtf.open(reader, 'ensembl'):
+            for rec in gtf_open(reader, 'ensembl'):
                 # Only process transcript features
                 if rec.feature == 'transcript':
                     if rec.transcript_id and rec.gene_id:
@@ -44,7 +44,7 @@ class Deseq2Analyzer:
         if not tx2gene_dict:
             self.logger.info("No 'transcript' features found, trying 'mRNA' for GFF3 format...")
             with open(gtf_file, 'r', encoding='utf-8', errors='ignore') as reader:
-                for rec in gtf.open(reader):
+                for rec in gtf_open(reader):
                     if rec.feature in ['mRNA', 'transcript', 'primary_transcript']:
                         # For GFF3, ID is transcript_id, Parent is gene_id
                         tx_id = rec.meta.get('ID') or rec.meta.get('transcript_id')
