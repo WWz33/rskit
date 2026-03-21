@@ -35,7 +35,7 @@ class Deseq2Analyzer:
         num_records = 0
         
         with open(gtf_file, 'r', encoding='utf-8', errors='ignore') as reader:
-            for rec in gtf_open(reader):
+            for rec in gtf_open(reader, 'ensembl'):
                 num_records += 1
                 if rec.feature == 'transcript' and rec.transcript_id and rec.gene_id:
                     if rec.transcript_id not in tx2gene_map:
