@@ -52,6 +52,7 @@ def trim_reads(read1, read2, sample, clean_data_dir, html_dir, json_dir, threads
 def main_quant(args):
     """Run quantification pipeline"""
     from rskit.utils.validators import check_and_prepare_index
+    from rskit.utils.parallel import get_optimal_threads
     
     # Convert paths to absolute before changing directory
     r1 = Path(args.r1).resolve() if args.r1 else None
@@ -79,10 +80,17 @@ def main_quant(args):
             raise ValueError(f"Sample file must contain columns: {required_cols}")
         samples_list = [(row['sample'], Path(row['r1']).resolve(), Path(row['r2']).resolve()) 
                         for _, row in samples_df.iterrows()]
+        
+        # Calculate threads per sample if --parallel is specified
+        if args.parallel:
+            threads, num_samples = get_optimal_threads(args.parallel, coldata_file=args.coldata)
+        else:
+            threads = args.threads
     else:
         if not all([args.sample, r1, r2]):
             raise ValueError("Must provide --sample, --r1, --r2 or use --coldata")
         samples_list = [(args.sample, r1, r2)]
+        threads = args.threads
     
     # Process samples
     samples = {}
@@ -90,14 +98,14 @@ def main_quant(args):
         if args.trim:
             logger.info(f"Trimming {sample_name}...")
             r1_clean, r2_clean = trim_reads(r1_path, r2_path, sample_name, workdirs['clean_data'], 
-                                           workdirs['clean_data_html'], workdirs['clean_data_json'], args.threads)
+                                           workdirs['clean_data_html'], workdirs['clean_data_json'], threads)
             samples[sample_name] = {'fq1': r1_clean, 'fq2': r2_clean}
         else:
             samples[sample_name] = {'fq1': str(r1_path), 'fq2': str(r2_path)}
     
     config = PipelineConfig(
-        star=StarConfig(threads=args.threads),
-        salmon=SalmonConfig(threads=args.threads),
+        star=StarConfig(threads=threads),
+        salmon=SalmonConfig(threads=threads),
         output_dir=str(workdirs['bam'])
     )
     pipeline = RNAseqPipeline(config)
@@ -169,6 +177,7 @@ def main_wgcna(args):
 def main_all(args):
     """Run complete pipeline: quant -> deseq2"""
     from rskit.utils.validators import check_and_prepare_index
+    from rskit.utils.parallel import get_optimal_threads
     
     logger.info("="*60)
     logger.info("Complete Pipeline: Quantification + DESeq2")
@@ -199,6 +208,12 @@ def main_all(args):
     samples_list = [(row['sample'], Path(row['r1']).resolve(), Path(row['r2']).resolve()) 
                     for _, row in samples_df.iterrows()]
     
+    # Calculate threads per sample if --parallel is specified
+    if args.parallel:
+        threads, num_samples = get_optimal_threads(args.parallel, coldata_file=str(coldata_file))
+    else:
+        threads = args.threads
+    
     # Step 1: Run quantification
     logger.info("="*60)
     logger.info("Step 1: Quantification Pipeline")
@@ -209,14 +224,14 @@ def main_all(args):
         if args.trim:
             logger.info(f"Trimming {sample_name}...")
             r1_clean, r2_clean = trim_reads(r1_path, r2_path, sample_name, workdirs['clean_data'], 
-                                           workdirs['clean_data_html'], workdirs['clean_data_json'], args.threads)
+                                           workdirs['clean_data_html'], workdirs['clean_data_json'], threads)
             samples[sample_name] = {'fq1': r1_clean, 'fq2': r2_clean}
         else:
             samples[sample_name] = {'fq1': str(r1_path), 'fq2': str(r2_path)}
     
     config = PipelineConfig(
-        star=StarConfig(threads=args.threads),
-        salmon=SalmonConfig(threads=args.threads),
+        star=StarConfig(threads=threads),
+        salmon=SalmonConfig(threads=threads),
         output_dir=str(workdirs['bam'])
     )
     pipeline = RNAseqPipeline(config)
@@ -285,7 +300,8 @@ def main():
     parser_quant.add_argument("-gf", "--transcript-fasta", dest="transcript_fasta", required=True, help="Transcript FASTA file")
     parser_quant.add_argument("-o", "--output-dir", dest="output_dir", required=True, help="Output directory (work directory)")
     parser_quant.add_argument("-idx", "--index-dir", dest="index_dir", help="STAR index directory (default: <output_dir>/00_index)")
-    parser_quant.add_argument("-t", "--threads", type=int, default=8, help="Number of threads")
+    parser_quant.add_argument("-t", "--threads", type=int, default=8, help="Number of threads per sample")
+    parser_quant.add_argument("-p", "--parallel", type=int, help="Total cores for parallel processing (will be divided by number of samples)")
     parser_quant.add_argument("--trim", action="store_true", help="Trim reads with fastp")
     parser_quant.add_argument("--force-index", action="store_true", help="Force rebuild index")
     parser_quant.set_defaults(func=main_quant)
@@ -451,7 +467,9 @@ Examples:
     parser_all.add_argument("-t2g", "--tx2gene", dest="tx2gene",
         help="Path to transcript-to-gene mapping file (CSV/TSV with transcript_id,gene_id columns)")
     parser_all.add_argument("-t", "--threads", type=int, default=8,
-        help="Number of threads")
+        help="Number of threads per sample")
+    parser_all.add_argument("-p", "--parallel", type=int,
+        help="Total cores for parallel processing (will be divided by number of samples)")
     parser_all.add_argument("--trim", action="store_true",
         help="Trim reads with fastp")
     parser_all.add_argument("--force-index", action="store_true",
