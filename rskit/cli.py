@@ -4,8 +4,9 @@ import os
 import pandas as pd
 import subprocess
 from pathlib import Path
-from rskit.config import StarConfig, SalmonConfig, PipelineConfig
+from rskit.config import StarConfig, SalmonConfig, PipelineConfig, DESeq2Config
 from rskit.core.pipeline import RNAseqPipeline
+from rskit.core.deseq2 import Deseq2Analyzer, run_deseq2_cli
 from rskit.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -21,7 +22,8 @@ def setup_workdir(output_dir):
         'clean_data_html': output_dir / '01_clean_data' / 'html',
         'clean_data_json': output_dir / '01_clean_data' / 'json',
         'bam': output_dir / '02_bam',
-        'quant': output_dir / '03_quant'
+        'quant': output_dir / '03_quant',
+        'deseq2': output_dir / '04_deseq2'
     }
     
     for d in dirs.values():
@@ -47,6 +49,7 @@ def trim_reads(read1, read2, sample, clean_data_dir, html_dir, json_dir, threads
     return str(prefix) + '_1.fq', str(prefix) + '_2.fq'
 
 def main_quant(args):
+    """Run quantification pipeline"""
     # Convert paths to absolute before changing directory
     r1 = Path(args.r1).resolve()
     r2 = Path(args.r2).resolve()
@@ -101,7 +104,30 @@ def main_quant(args):
     logger.info(f"Pipeline completed. Results: {results}")
 
 def main_deseq2(args):
-    logger.info(f"DESeq2 analysis for: {args.quant_dir}")
+    """Run DESeq2 differential expression analysis"""
+    logger.info("="*60)
+    logger.info("DESeq2 Differential Expression Analysis")
+    logger.info("="*60)
+    
+    # Validate input arguments
+    if not args.salmon_dir and not args.gene_counts:
+        logger.error("Either --salmon-dir or --gene-counts must be provided")
+        sys.exit(1)
+    
+    if args.salmon_dir and args.gene_counts:
+        logger.warning("Both --salmon-dir and --gene-counts provided. Using --salmon-dir with pytximport")
+    
+    # Setup output directory
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Run DESeq2 analysis
+    try:
+        analyzer = run_deseq2_cli(args)
+        logger.info("DESeq2 analysis completed successfully!")
+    except Exception as e:
+        logger.error(f"DESeq2 analysis failed: {e}")
+        raise
 
 def main():
     parser = argparse.ArgumentParser(
@@ -128,8 +154,61 @@ def main():
     parser_quant.set_defaults(func=main_quant)
     
     # deseq2 command
-    parser_deseq2 = subparsers.add_parser("deseq2", help="DESeq2 differential expression analysis")
-    parser_deseq2.add_argument("quant_dir", help="Quantification results directory")
+    parser_deseq2 = subparsers.add_parser("deseq2", 
+        help="DESeq2 differential expression analysis",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        epilog="""
+Coldata format example (CSV):
+    sample,id,condition
+    lhy-D-rep1,lhy_D,lhy-D
+    lhy-D-rep2,lhy_D,lhy-D
+    lhy-rep1,lhy,lhy
+    lhy-rep2,lhy,lhy
+    WT-D-rep1,WT_D,WT-D
+    WT-D-rep2,WT_D,WT-D
+    WT-rep1,WT,WT
+    WT-rep2,WT,WT
+
+Examples:
+    # Basic analysis with default design (~condition)
+    rskit deseq2 --salmon-dir ./03_quant --coldata coldata.csv --gtf annotation.gtf
+    
+    # Multi-factor design with batch effect
+    rskit deseq2 --salmon-dir ./03_quant --coldata coldata.csv --gtf annotation.gtf --design "~id + condition"
+    
+    # Specify contrast explicitly
+    rskit deseq2 --salmon-dir ./03_quant --coldata coldata.csv --gtf annotation.gtf --contrast "condition,lhy-D,WT"
+        """)
+    
+    # Input options (mutually exclusive)
+    input_group = parser_deseq2.add_mutually_exclusive_group(required=True)
+    input_group.add_argument("--salmon-dir", dest="salmon_dir", 
+        help="Directory containing Salmon quant subfolders (uses pytximport for gene count estimation)")
+    input_group.add_argument("--gene-counts", dest="gene_counts",
+        help="Path to gene counts matrix file (CSV/TSV, samples x genes)")
+    
+    # Required arguments
+    parser_deseq2.add_argument("--coldata", required=True,
+        help="Path to coldata/metadata file with columns: sample,id,condition (sample=folder name, id=group, condition=DE factor)")
+    parser_deseq2.add_argument("--gtf", 
+        help="GTF annotation file (required when using --salmon-dir without --tx2gene)")
+    parser_deseq2.add_argument("--tx2gene", dest="tx2gene",
+        help="Path to transcript-to-gene mapping file (CSV/TSV with transcript_id,gene_id columns)")
+    
+    # Output options
+    parser_deseq2.add_argument("-o", "--output-dir", dest="output_dir", default="./deseq2_output",
+        help="Output directory for results")
+    
+    # Analysis options
+    parser_deseq2.add_argument("--design", default="~condition",
+        help="Design formula (e.g., '~condition' for single factor, '~id + condition' for multi-factor)")
+    parser_deseq2.add_argument("--contrast", 
+        help="Contrast specification: 'factor,level1,level2' (e.g., 'condition,lhy-D,WT'). If not specified, will auto-detect from 'condition' column.")
+    parser_deseq2.add_argument("--alpha", type=float, default=0.05,
+        help="Significance threshold for adjusted p-values")
+    parser_deseq2.add_argument("-t", "--threads", type=int, default=None,
+        help="Number of threads for parallel processing")
+    
     parser_deseq2.set_defaults(func=main_deseq2)
     
     args = parser.parse_args()
