@@ -7,6 +7,7 @@ from pathlib import Path
 from rskit.config import StarConfig, SalmonConfig, PipelineConfig, DESeq2Config
 from rskit.core.pipeline import RNAseqPipeline
 from rskit.core.deseq2 import Deseq2Analyzer, run_deseq2_cli
+from rskit.core.wgcna import run_wgcna_cli
 from rskit.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -137,6 +138,25 @@ def main_deseq2(args):
         logger.error(f"DESeq2 analysis failed: {e}")
         raise
 
+def main_wgcna(args):
+    """Run WGCNA co-expression network analysis"""
+    logger.info("="*60)
+    logger.info("WGCNA Co-expression Network Analysis")
+    logger.info("="*60)
+    
+    # Validate input arguments
+    if not args.expression:
+        logger.error("Expression file must be provided")
+        sys.exit(1)
+    
+    # Run WGCNA analysis
+    try:
+        analyzer = run_wgcna_cli(args)
+        logger.info("WGCNA analysis completed successfully!")
+    except Exception as e:
+        logger.error(f"WGCNA analysis failed: {e}")
+        raise
+
 def main():
     parser = argparse.ArgumentParser(
         description="RNA-seq analysis toolkit",
@@ -220,6 +240,66 @@ Examples:
         help="Number of threads for parallel processing")
     
     parser_deseq2.set_defaults(func=main_deseq2)
+    
+    # wgcna command
+    parser_wgcna = subparsers.add_parser("wgcna", 
+        help="WGCNA co-expression network analysis",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        epilog="""
+Examples:
+    # Basic analysis with expression data
+    rskit wgcna --expression expression.csv --output-dir ./wgcna_results
+    
+    # Analysis with sample and gene metadata
+    rskit wgcna --expression expression.csv --sample-info sample_info.csv --gene-info gene_info.csv --output-dir ./wgcna_results
+    
+    # Custom network parameters
+    rskit wgcna --expression expression.csv --output-dir ./wgcna_results --network-type signed --min-module-size 30
+        """)
+    
+    # Required arguments
+    parser_wgcna.add_argument("-e", "--expression", required=True,
+        help="Path to gene expression matrix file (CSV/TSV, samples x genes)")
+    parser_wgcna.add_argument("-o", "--output-dir", dest="output_dir", required=True,
+        help="Output directory for WGCNA results")
+    
+    # Optional metadata files
+    parser_wgcna.add_argument("--sample-info", dest="sample_info",
+        help="Path to sample metadata file (CSV/TSV)")
+    parser_wgcna.add_argument("--gene-info", dest="gene_info",
+        help="Path to gene metadata file (CSV/TSV)")
+    
+    # Data options
+    parser_wgcna.add_argument("--sep", default=",",
+        help="Separator for input files (comma or tab)")
+    parser_wgcna.add_argument("--name", default="WGCNA",
+        help="Name for the WGCNA analysis")
+    parser_wgcna.add_argument("--species", 
+        help="Species for enrichment analysis (Human, Mouse, Yeast, Fly, Fish, Worm)")
+    parser_wgcna.add_argument("--level", default="gene", choices=["gene", "transcript"],
+        help="Data level (gene or transcript)")
+    
+    # WGCNA parameters
+    parser_wgcna.add_argument("--network-type", dest="network_type", default="signed hybrid",
+        choices=["unsigned", "signed", "signed hybrid"],
+        help="Type of network to generate")
+    parser_wgcna.add_argument("--tom-type", dest="tom_type", default="signed",
+        choices=["unsigned", "signed"],
+        help="Type of topological overlap matrix")
+    parser_wgcna.add_argument("--min-module-size", dest="min_module_size", type=int, default=50,
+        help="Minimum module size")
+    parser_wgcna.add_argument("--power", type=int,
+        help="Soft thresholding power (auto-detected if not specified)")
+    parser_wgcna.add_argument("--rsquared-cut", dest="rsquared_cut", type=float, default=0.9,
+        help="R-squared cutoff for scale-free topology")
+    parser_wgcna.add_argument("--mean-cut", dest="mean_cut", type=int, default=100,
+        help="Mean connectivity cutoff")
+    parser_wgcna.add_argument("--mediss-thresh", dest="mediss_thresh", type=float, default=0.2,
+        help="Module eigengene dissimilarity threshold for merging")
+    parser_wgcna.add_argument("--tpm-cutoff", dest="tpm_cutoff", type=int, default=1,
+        help="TPM cutoff for filtering low-expression genes")
+    
+    parser_wgcna.set_defaults(func=main_wgcna)
     
     args = parser.parse_args()
     if vars(args) == {}:
