@@ -204,8 +204,10 @@ Examples:
         help="Path to transcript-to-gene mapping file (CSV/TSV with transcript_id,gene_id columns)")
     
     # Output options
-    parser_deseq2.add_argument("-o", "--output-dir", dest="output_dir", default="./deseq2_output",
-        help="Output directory for results")
+    parser_deseq2.add_argument("-w", "--work-dir", dest="work_dir", default=".",
+        help="Work directory (will create 00_index, 01_clean_data, 02_bam, 03_quant, 04_deseq2)")
+    parser_deseq2.add_argument("-o", "--output-dir", dest="output_dir", default=None,
+        help="Custom output directory for DESeq2 results (default: work_dir/04_deseq2)")
     
     # Analysis options
     parser_deseq2.add_argument("--design", default="~condition",
