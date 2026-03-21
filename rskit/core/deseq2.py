@@ -26,22 +26,45 @@ class Deseq2Analyzer:
         Returns:
             DataFrame with transcript_id and gene_id columns
         """
-        from rskit.utils.gtf import open as gtf_open
+        import re
         
         self.logger.info(f"Parsing GTF file: {gtf_file}")
         
-        tx2gene_list = []
+        # Use dict to automatically deduplicate by transcript_id
+        tx2gene_map = {}
+        num_records = 0
+        
+        re_attrs = re.compile(r'(\w+)\s+"([^"]*)";')
         
         with open(gtf_file, 'r', encoding='utf-8', errors='ignore') as reader:
-            for rec in gtf_open(reader, 'ensembl'):
-                if rec.feature == 'transcript':
-                    tx2gene_list.append({
-                        'transcript_id': rec.meta['transcript_id'],
-                        'gene_id': rec.meta['gene_id']
-                    })
+            for line in reader:
+                if line.startswith('#'):
+                    continue
+                num_records += 1
+                cols = line.rstrip('\r\n').split('\t', 8)
+                if len(cols) < 9:
+                    continue
+                
+                feature = cols[2]
+                if feature != 'transcript':
+                    continue
+                
+                # Parse attributes
+                attrs = dict(m.groups() for m in re_attrs.finditer(cols[8]))
+                tx_id = attrs.get('transcript_id')
+                gene_id = attrs.get('gene_id')
+                
+                if tx_id and gene_id and tx_id not in tx2gene_map:
+                    tx2gene_map[tx_id] = gene_id
         
-        # Create DataFrame
-        tx2gene_df = pd.DataFrame(tx2gene_list)
+        self.logger.info(f"Scanned {num_records} GTF lines")
+        self.logger.info(f"Extracted {len(tx2gene_map)} unique transcript-to-gene mappings")
+        
+        # Convert to DataFrame
+        tx2gene_df = pd.DataFrame(
+            [(tx, gene) for tx, gene in tx2gene_map.items()],
+            columns=['transcript_id', 'gene_id']
+        )
         
         # Save to file for debugging
         if output_dir:
@@ -49,9 +72,9 @@ class Deseq2Analyzer:
             output_path.mkdir(parents=True, exist_ok=True)
             tx2gene_file = output_path / "tx2gene.tsv"
             tx2gene_df.to_csv(tx2gene_file, sep='\t', index=False)
-            self.logger.info(f"Saved tx2gene mapping to {tx2gene_file}")
+            self.logger.info(f"Saved tx2gene mapping to: {tx2gene_file}")
         
-        self.logger.info(f"Created tx2gene map with {len(tx2gene_df)} transcripts")
+        self.logger.info(f"tx2gene preview:\n{tx2gene_df.head()}")
         return tx2gene_df
     
     def load_counts_from_salmon(self, salmon_dir: str, coldata: pd.DataFrame, 
@@ -102,9 +125,8 @@ class Deseq2Analyzer:
         else:
             raise ValueError("Either gtf_file or tx2gene must be provided")
         
-        # Ensure correct column names
+        # Ensure correct column names and save if loaded from file
         if 'transcript_id' not in tx2gene_map.columns or 'gene_id' not in tx2gene_map.columns:
-            # Try to detect column names
             if len(tx2gene_map.columns) >= 2:
                 tx2gene_map = tx2gene_map.iloc[:, :2]
                 tx2gene_map.columns = ['transcript_id', 'gene_id']
@@ -112,15 +134,16 @@ class Deseq2Analyzer:
             else:
                 raise ValueError("tx2gene map must have at least 2 columns (transcript_id, gene_id)")
         
-        # Save tx2gene for debugging (before tximport)
-        if output_dir:
+        # Save tx2gene for debugging if loaded from file (GTF path already saves)
+        if tx2gene is not None and output_dir:
             output_path = Path(output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
             tx2gene_file = output_path / "tx2gene.tsv"
             tx2gene_map.to_csv(tx2gene_file, sep='\t', index=False)
             self.logger.info(f"Saved tx2gene mapping to {tx2gene_file}")
-        else:
-            self.logger.warning("output_dir is None, skipping tx2gene save")
+        
+        # Final stats before tximport
+        self.logger.info(f"Ready for tximport: {len(tx2gene_map)} transcripts, {tx2gene_map['gene_id'].nunique()} genes")
         
         # Run tximport
         self.logger.info(f"Running pytximport on {len(file_paths)} samples...")
