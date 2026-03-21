@@ -34,6 +34,7 @@ class DESeq2Config:
     size_factors_fit_type: str = "ratio"
     alpha: float = 0.05
     lfc_null: float = 0.0
+    lfc_threshold: float = 2.0  # Log2 fold change threshold for significant genes
     alt_hypothesis: Optional[str] = None
     cooks_filter: bool = True
     independent_filter: bool = True

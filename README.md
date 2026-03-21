@@ -117,14 +117,17 @@ Complete pipeline: quantification + DESeq2 analysis.
 | `-p, --parallel` | Total cores for parallel processing (samples run simultaneously) |
 | `--trim` | Trim reads with fastp |
 | `--force-index` | Force rebuild index |
+| `--skip-existing` | Skip samples if output already exists |
 | `--design` | Design formula (default: ~condition) |
 | `--contrast` | Contrast specification (e.g., 'condition,treatment,control') |
-| `--alpha` | Significance threshold (default: 0.05) |
+| `--alpha` | Significance threshold for adjusted p-values (default: 0.05) |
+| `--lfc` | Log2 fold change threshold for significant genes (default: 2.0) |
 
 > **Note**: 
 > - If `--index-dir` is not specified, index will be stored in `<output_dir>/00_index/`
 > - If a valid STAR index exists, it will be reused automatically (use `--force-index` to rebuild)
 > - When using `--parallel`, samples are processed in parallel with `parallel_cores / num_samples` threads each
+> - Significant genes: `padj < alpha AND abs(log2FoldChange) > lfc`
 
 ### rskit quant
 
@@ -145,11 +148,13 @@ Complete quantification pipeline (index → align → quant).
 | `-p, --parallel` | Total cores for parallel processing (samples run simultaneously) |
 | `--trim` | Trim reads with fastp |
 | `--force-index` | Force rebuild index |
+| `--skip-existing` | Skip samples if output already exists |
 
 > **Note**: 
 > - If `--index-dir` is not specified, index will be stored in `<output_dir>/00_index/`
 > - If a valid STAR index exists, it will be reused automatically (use `--force-index` to rebuild)
 > - When using `--parallel` with `--coldata`, samples are processed in parallel with `parallel_cores / num_samples` threads each
+> - Default behavior: overwrite existing output. Use `--skip-existing` to skip
 
 ### rskit deseq2
 
@@ -164,9 +169,12 @@ DESeq2 differential expression analysis.
 | `-t2g, --tx2gene` | Transcript-to-gene mapping file |
 | `--design` | Design formula (default: ~condition) |
 | `--contrast` | Contrast specification |
-| `--alpha` | Significance threshold (default: 0.05) |
+| `--alpha` | Significance threshold for adjusted p-values (default: 0.05) |
+| `--lfc` | Log2 fold change threshold for significant genes (default: 2.0) |
 | `-o, --output-dir` | Output directory |
 | `-t, --threads` | Number of threads |
+
+> **Significant genes**: `padj < alpha AND abs(log2FoldChange) > lfc` (default: padj < 0.05 AND abs(log2FC) > 2)
 
 ### rskit wgcna
 
@@ -225,7 +233,10 @@ results = pipeline.run(
 from rskit.core.deseq2 import Deseq2Analyzer
 from rskit.config import DESeq2Config
 
-config = DESeq2Config()
+config = DESeq2Config(
+    alpha=0.05,           # padj threshold
+    lfc_threshold=2.0     # abs(log2FoldChange) threshold
+)
 analyzer = Deseq2Analyzer(config)
 
 # Load data
@@ -238,6 +249,10 @@ results_df = analyzer.analyze(
     metadata_df=metadata_df,
     contrast=["condition", "treatment", "control"]
 )
+
+# Get summary (significant genes: padj < 0.05 AND abs(log2FC) > 2)
+summary = analyzer.get_summary()
+print(f"Significant genes: {summary['significant_genes']}")
 ```
 
 ### WGCNA Analysis

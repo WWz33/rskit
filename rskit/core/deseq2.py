@@ -403,8 +403,11 @@ class Deseq2Analyzer:
         self.stats_results.to_csv(results_file)
         saved_files['results'] = str(results_file)
         
-        # Save significant genes
-        sig_genes = self.stats_results[self.stats_results['padj'] < self.config.alpha]
+        # Save significant genes (padj < alpha AND abs(log2FoldChange) > lfc_threshold)
+        sig_genes = self.stats_results[
+            (self.stats_results['padj'] < self.config.alpha) & 
+            (self.stats_results['log2FoldChange'].abs() > self.config.lfc_threshold)
+        ]
         sig_file = output_path / f"{prefix}_significant.csv"
         sig_genes.to_csv(sig_file)
         saved_files['significant'] = str(sig_file)
@@ -618,15 +621,15 @@ class Deseq2Analyzer:
             raise ValueError("No results available. Run analyze() first.")
         
         total_genes = len(self.stats_results)
-        sig_genes = len(self.stats_results[self.stats_results['padj'] < self.config.alpha])
-        up_genes = len(self.stats_results[
+        
+        # Significant genes: padj < alpha AND abs(log2FoldChange) > lfc_threshold
+        sig_mask = (
             (self.stats_results['padj'] < self.config.alpha) & 
-            (self.stats_results['log2FoldChange'] > 0)
-        ])
-        down_genes = len(self.stats_results[
-            (self.stats_results['padj'] < self.config.alpha) & 
-            (self.stats_results['log2FoldChange'] < 0)
-        ])
+            (self.stats_results['log2FoldChange'].abs() > self.config.lfc_threshold)
+        )
+        sig_genes = len(self.stats_results[sig_mask])
+        up_genes = len(self.stats_results[sig_mask & (self.stats_results['log2FoldChange'] > 0)])
+        down_genes = len(self.stats_results[sig_mask & (self.stats_results['log2FoldChange'] < 0)])
         
         return {
             'total_genes': total_genes,
@@ -634,6 +637,7 @@ class Deseq2Analyzer:
             'upregulated_genes': up_genes,
             'downregulated_genes': down_genes,
             'alpha': self.config.alpha,
+            'lfc_threshold': self.config.lfc_threshold,
             'design': self.config.design
         }
 
@@ -650,6 +654,7 @@ def run_deseq2_cli(args):
     config = DESeq2Config(
         design=args.design,
         alpha=args.alpha,
+        lfc_threshold=getattr(args, 'lfc_threshold', 2.0),
         n_cpus=args.threads
     )
     

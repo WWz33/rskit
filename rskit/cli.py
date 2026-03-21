@@ -32,6 +32,7 @@ class Deseq2Args:
     design: str = "~condition"
     contrast: Optional[List[str]] = None
     alpha: float = 0.05
+    lfc_threshold: float = 2.0
     threads: Optional[int] = None
 
 
@@ -137,13 +138,13 @@ def build_index_if_needed(index_dir: Path, genome_fasta: str, gtf_file: str,
 
 def run_quantification(samples: Dict[str, Dict], genome_fasta: str, gtf_file: str,
                        transcript_fasta: str, index_dir: Path, workdirs: Dict[str, Path],
-                       threads_per_sample: int, parallel: bool) -> Dict:
+                       threads_per_sample: int, parallel: bool, skip_existing: bool = False) -> Dict:
     """Run quantification pipeline (parallel or sequential)"""
     num_samples = len(samples)
     
     if parallel and num_samples > 1:
         return run_samples_parallel(samples, str(index_dir), transcript_fasta, 
-                                    workdirs, threads_per_sample)
+                                    workdirs, threads_per_sample, skip_existing)
     else:
         config = PipelineConfig(
             star=StarConfig(threads=threads_per_sample),
@@ -199,7 +200,7 @@ def main_quant(args):
     # Prepare and run samples
     samples = prepare_samples(samples_list, workdirs, args.trim, threads_per_sample, parallel=use_parallel)
     results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
-                                 index_dir, workdirs, threads_per_sample, use_parallel)
+                                 index_dir, workdirs, threads_per_sample, use_parallel, args.skip_existing)
     
     logger.info(f"Pipeline completed. Processed {len(results)} samples.")
 
@@ -291,7 +292,7 @@ def main_all(args):
     
     samples = prepare_samples(samples_list, workdirs, args.trim, threads_per_sample, parallel=use_parallel)
     results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
-                                 index_dir, workdirs, threads_per_sample, use_parallel)
+                                 index_dir, workdirs, threads_per_sample, use_parallel, args.skip_existing)
     logger.info(f"Quantification completed. Processed {len(results)} samples.")
     
     # Step 2: Run DESeq2
@@ -309,6 +310,7 @@ def main_all(args):
         design=args.design,
         contrast=args.contrast,
         alpha=args.alpha,
+        lfc_threshold=getattr(args, 'lfc_threshold', 2.0),
         threads=args.threads
     )
     
@@ -348,6 +350,7 @@ def main():
     parser_quant.add_argument("-p", "--parallel", type=int, help="Total cores for parallel processing")
     parser_quant.add_argument("--trim", action="store_true", help="Trim reads with fastp")
     parser_quant.add_argument("--force-index", action="store_true", help="Force rebuild index")
+    parser_quant.add_argument("--skip-existing", action="store_true", help="Skip samples if output already exists")
     parser_quant.set_defaults(func=main_quant)
     
     # deseq2 command
@@ -387,6 +390,8 @@ Examples:
         help="Contrast specification (e.g., 'condition,treatment,control')")
     parser_deseq2.add_argument("--alpha", type=float, default=0.05,
         help="Significance threshold for adjusted p-values")
+    parser_deseq2.add_argument("--lfc", dest="lfc_threshold", type=float, default=2.0,
+        help="Log2 fold change threshold for significant genes")
     parser_deseq2.add_argument("-t", "--threads", type=int, default=None,
         help="Number of threads for parallel processing")
     
@@ -474,12 +479,16 @@ Examples:
         help="Trim reads with fastp")
     parser_all.add_argument("--force-index", action="store_true",
         help="Force rebuild index")
+    parser_all.add_argument("--skip-existing", action="store_true",
+        help="Skip samples if output already exists")
     parser_all.add_argument("--design", default="~condition",
         help="Design formula (e.g., '~condition', '~batch + condition')")
     parser_all.add_argument("--contrast",
         help="Contrast specification (e.g., 'condition,treatment,control')")
     parser_all.add_argument("--alpha", type=float, default=0.05,
         help="Significance threshold for adjusted p-values")
+    parser_all.add_argument("--lfc", dest="lfc_threshold", type=float, default=2.0,
+        help="Log2 fold change threshold for significant genes")
     
     parser_all.set_defaults(func=main_all)
     

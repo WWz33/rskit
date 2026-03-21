@@ -21,7 +21,7 @@ def calculate_threads_per_sample(parallel_cores, num_samples):
 
 def process_single_sample(args):
     """Process a single sample: alignment + quantification."""
-    sample_name, sample_data, index_dir, transcript_fasta, workdirs, threads = args
+    sample_name, sample_data, index_dir, transcript_fasta, workdirs, threads, skip_existing = args
     
     from rskit.core.star import StarAligner
     from rskit.core.salmon import SalmonQuantifier
@@ -37,6 +37,12 @@ def process_single_sample(args):
     sample_quant_dir = Path(workdirs['quant']) / sample_name
     sample_quant_dir.mkdir(parents=True, exist_ok=True)
     
+    # Check if output exists and skip if requested
+    quant_file = sample_quant_dir / "quant.sf"
+    if skip_existing and quant_file.exists():
+        logger.info(f"[{sample_name}] Output exists, skipping")
+        return sample_name, {"quantification": {"quant": str(quant_file)}}
+    
     # Run alignment
     logger.info(f"[{sample_name}] Aligning with {threads} threads...")
     align_prefix = str(sample_bam_dir / f"{sample_name}_")
@@ -46,32 +52,22 @@ def process_single_sample(args):
     # Run quantification
     logger.info(f"[{sample_name}] Quantifying...")
     quant_results = quantifier.quantify(transcript_fasta, align_results["transcriptome_bam"],
-                                        str(sample_quant_dir), sample_name=sample_name)
+                                        str(sample_quant_dir), sample_name=sample_name,
+                                        skip_if_exists=skip_existing)
     
     logger.info(f"[{sample_name}] Completed")
     return sample_name, {"alignment": align_results, "quantification": quant_results}
 
 
-def run_samples_parallel(samples, index_dir, transcript_fasta, workdirs, threads_per_sample):
-    """Run alignment and quantification for multiple samples in parallel.
-    
-    Args:
-        samples: Dict of sample data {sample_name: {"fq1": path, "fq2": path}}
-        index_dir: Path to STAR index
-        transcript_fasta: Path to transcript FASTA
-        workdirs: Dict with 'bam' and 'quant' output directories
-        threads_per_sample: Number of threads per sample
-        
-    Returns:
-        dict: Results for all samples
-    """
+def run_samples_parallel(samples, index_dir, transcript_fasta, workdirs, threads_per_sample, skip_existing=False):
+    """Run alignment and quantification for multiple samples in parallel."""
     num_samples = len(samples)
     max_workers = num_samples
     
     logger.info(f"Parallel processing: {num_samples} samples, {threads_per_sample} threads each")
     
     sample_args = [
-        (name, data, index_dir, transcript_fasta, workdirs, threads_per_sample)
+        (name, data, index_dir, transcript_fasta, workdirs, threads_per_sample, skip_existing)
         for name, data in samples.items()
     ]
     
