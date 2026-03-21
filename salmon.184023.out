@@ -1,0 +1,197 @@
+[2026-03-22 04:41:41] INFO - rskit.cli: ============================================================
+[2026-03-22 04:41:41] INFO - rskit.cli: Complete Pipeline: Quantification + DESeq2
+[2026-03-22 04:41:41] INFO - rskit.cli: ============================================================
+[2026-03-22 04:41:41] INFO - rskit.utils.validators: Valid STAR index found at /sri/home/sri2025201067/test/rnaseq-tools/data/00_index, skipping index building
+[2026-03-22 04:41:41] INFO - rskit.cli: Parallel: 90 cores / 6 samples = 15 threads/sample
+[2026-03-22 04:41:41] INFO - rskit.cli: ============================================================
+[2026-03-22 04:41:41] INFO - rskit.cli: Step 1: Quantification Pipeline
+[2026-03-22 04:41:41] INFO - rskit.cli: ============================================================
+[2026-03-22 04:41:41] INFO - rskit.cli: Parallel trimming: 6 samples
+[2026-03-22 04:41:41] INFO - rskit.cli: [lhy-rep1] Trimming...
+[2026-03-22 04:41:41] INFO - rskit.cli: [lhy-rep2] Trimming...
+[2026-03-22 04:41:41] INFO - rskit.cli: [lhy-rep3] Trimming...
+[2026-03-22 04:41:41] INFO - rskit.cli: [WT-rep1] Trimming...
+[2026-03-22 04:41:41] INFO - rskit.cli: [WT-rep2] Trimming...
+[2026-03-22 04:41:41] INFO - rskit.cli: [WT-rep3] Trimming...
+[2026-03-22 04:42:19] INFO - rskit.cli: [lhy-rep2] Trimming completed
+[2026-03-22 04:42:19] INFO - rskit.cli: Trim progress: 1/6 completed
+[2026-03-22 04:42:27] INFO - rskit.cli: [WT-rep2] Trimming completed
+[2026-03-22 04:42:27] INFO - rskit.cli: Trim progress: 2/6 completed
+[2026-03-22 04:42:29] INFO - rskit.cli: [lhy-rep3] Trimming completed
+[2026-03-22 04:42:29] INFO - rskit.cli: Trim progress: 3/6 completed
+[2026-03-22 04:42:37] INFO - rskit.cli: [lhy-rep1] Trimming completed
+[2026-03-22 04:42:37] INFO - rskit.cli: Trim progress: 4/6 completed
+[2026-03-22 04:42:38] INFO - rskit.cli: [WT-rep3] Trimming completed
+[2026-03-22 04:42:38] INFO - rskit.cli: Trim progress: 5/6 completed
+[2026-03-22 04:42:43] INFO - rskit.cli: [WT-rep1] Trimming completed
+[2026-03-22 04:42:43] INFO - rskit.cli: Trim progress: 6/6 completed
+[2026-03-22 04:42:43] INFO - rskit.utils.parallel: Parallel processing: 6 samples, 15 threads each
+[2026-03-22 04:42:43] INFO - rskit.utils.parallel: [lhy-rep2] Aligning with 15 threads...
+[2026-03-22 04:42:43] INFO - rskit.utils.parallel: [WT-rep2] Aligning with 15 threads...
+[2026-03-22 04:42:43] INFO - Tool: Aligning lhy-rep2 with STAR
+[2026-03-22 04:42:43] INFO - rskit.utils.parallel: [lhy-rep3] Aligning with 15 threads...
+[2026-03-22 04:42:43] INFO - Tool: Running: STAR --runThreadN 15 --genomeDir /sri/home/sri2025201067/test/rnaseq-tools/data/00_index --readFilesIn /sri/home/sri2025201067/test/rnaseq-tools/data/01_clean_data/lhy-rep2_1.fq /sri/home/sri2025201067/test/rnaseq-tools/data/01_clean_data/lhy-rep2_2.fq --readFilesCommand cat --outFileNamePrefix /sri/home/sri2025201067/test/rnaseq-tools/data/02_bam/lhy-rep2/lhy-rep2_ --outSAMtype BAM Unsorted --quantMode TranscriptomeSAM --twopassMode Basic --outSAMunmapped Within --outFilterType BySJout --quantTranscriptomeSAMoutput BanSingleEnd_ExtendSoftclip --outSAMattributes NH HI AS nM NM MD jM jI --sjdbOverhang 149 --alignIntronMin 20 --alignIntronMax 300000 --alignMatesGapMax 300000 --alignSJoverhangMin 8 --outFilterMismatchNoverReadLmax 0.04 --outFilterMismatchNmax 999 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1
+[2026-03-22 04:42:43] INFO - Tool: Aligning WT-rep2 with STAR
+[2026-03-22 04:42:43] INFO - Tool: Running: STAR --runThreadN 15 --genomeDir /sri/home/sri2025201067/test/rnaseq-tools/data/00_index --readFilesIn /sri/home/sri2025201067/test/rnaseq-tools/data/01_clean_data/WT-rep2_1.fq /sri/home/sri2025201067/test/rnaseq-tools/data/01_clean_data/WT-rep2_2.fq --readFilesCommand cat --outFileNamePrefix /sri/home/sri2025201067/test/rnaseq-tools/data/02_bam/WT-rep2/WT-rep2_ --outSAMtype BAM Unsorted --quantMode TranscriptomeSAM --twopassMode Basic --outSAMunmapped Within --outFilterType BySJout --quantTranscriptomeSAMoutput BanSingleEnd_ExtendSoftclip --outSAMattributes NH HI AS nM NM MD jM jI --sjdbOverhang 149 --alignIntronMin 20 --alignIntronMax 300000 --alignMatesGapMax 300000 --alignSJoverhangMin 8 --outFilterMismatchNoverReadLmax 0.04 --outFilterMismatchNmax 999 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1
+[2026-03-22 04:42:43] INFO - rskit.utils.parallel: [lhy-rep1] Aligning with 15 threads...
+[2026-03-22 04:42:43] INFO - rskit.utils.parallel: [WT-rep3] Aligning with 15 threads...
+[2026-03-22 04:42:43] INFO - Tool: Aligning lhy-rep3 with STAR
+[2026-03-22 04:42:43] INFO - Tool: Running: STAR --runThreadN 15 --genomeDir /sri/home/sri2025201067/test/rnaseq-tools/data/00_index --readFilesIn /sri/home/sri2025201067/test/rnaseq-tools/data/01_clean_data/lhy-rep3_1.fq /sri/home/sri2025201067/test/rnaseq-tools/data/01_clean_data/lhy-rep3_2.fq --readFilesCommand cat --outFileNamePrefix /sri/home/sri2025201067/test/rnaseq-tools/data/02_bam/lhy-rep3/lhy-rep3_ --outSAMtype BAM Unsorted --quantMode TranscriptomeSAM --twopassMode Basic --outSAMunmapped Within --outFilterType BySJout --quantTranscriptomeSAMoutput BanSingleEnd_ExtendSoftclip --outSAMattributes NH HI AS nM NM MD jM jI --sjdbOverhang 149 --alignIntronMin 20 --alignIntronMax 300000 --alignMatesGapMax 300000 --alignSJoverhangMin 8 --outFilterMismatchNoverReadLmax 0.04 --outFilterMismatchNmax 999 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1
+[2026-03-22 04:42:43] INFO - Tool: Aligning lhy-rep1 with STAR
+[2026-03-22 04:42:43] INFO - rskit.utils.parallel: [WT-rep1] Aligning with 15 threads...
+[2026-03-22 04:42:43] INFO - Tool: Running: STAR --runThreadN 15 --genomeDir /sri/home/sri2025201067/test/rnaseq-tools/data/00_index --readFilesIn /sri/home/sri2025201067/test/rnaseq-tools/data/01_clean_data/lhy-rep1_1.fq /sri/home/sri2025201067/test/rnaseq-tools/data/01_clean_data/lhy-rep1_2.fq --readFilesCommand cat --outFileNamePrefix /sri/home/sri2025201067/test/rnaseq-tools/data/02_bam/lhy-rep1/lhy-rep1_ --outSAMtype BAM Unsorted --quantMode TranscriptomeSAM --twopassMode Basic --outSAMunmapped Within --outFilterType BySJout --quantTranscriptomeSAMoutput BanSingleEnd_ExtendSoftclip --outSAMattributes NH HI AS nM NM MD jM jI --sjdbOverhang 149 --alignIntronMin 20 --alignIntronMax 300000 --alignMatesGapMax 300000 --alignSJoverhangMin 8 --outFilterMismatchNoverReadLmax 0.04 --outFilterMismatchNmax 999 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1
+[2026-03-22 04:42:43] INFO - Tool: Aligning WT-rep3 with STAR
+[2026-03-22 04:42:43] INFO - Tool: Running: STAR --runThreadN 15 --genomeDir /sri/home/sri2025201067/test/rnaseq-tools/data/00_index --readFilesIn /sri/home/sri2025201067/test/rnaseq-tools/data/01_clean_data/WT-rep3_1.fq /sri/home/sri2025201067/test/rnaseq-tools/data/01_clean_data/WT-rep3_2.fq --readFilesCommand cat --outFileNamePrefix /sri/home/sri2025201067/test/rnaseq-tools/data/02_bam/WT-rep3/WT-rep3_ --outSAMtype BAM Unsorted --quantMode TranscriptomeSAM --twopassMode Basic --outSAMunmapped Within --outFilterType BySJout --quantTranscriptomeSAMoutput BanSingleEnd_ExtendSoftclip --outSAMattributes NH HI AS nM NM MD jM jI --sjdbOverhang 149 --alignIntronMin 20 --alignIntronMax 300000 --alignMatesGapMax 300000 --alignSJoverhangMin 8 --outFilterMismatchNoverReadLmax 0.04 --outFilterMismatchNmax 999 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1
+[2026-03-22 04:42:43] INFO - Tool: Aligning WT-rep1 with STAR
+[2026-03-22 04:42:43] INFO - Tool: Running: STAR --runThreadN 15 --genomeDir /sri/home/sri2025201067/test/rnaseq-tools/data/00_index --readFilesIn /sri/home/sri2025201067/test/rnaseq-tools/data/01_clean_data/WT-rep1_1.fq /sri/home/sri2025201067/test/rnaseq-tools/data/01_clean_data/WT-rep1_2.fq --readFilesCommand cat --outFileNamePrefix /sri/home/sri2025201067/test/rnaseq-tools/data/02_bam/WT-rep1/WT-rep1_ --outSAMtype BAM Unsorted --quantMode TranscriptomeSAM --twopassMode Basic --outSAMunmapped Within --outFilterType BySJout --quantTranscriptomeSAMoutput BanSingleEnd_ExtendSoftclip --outSAMattributes NH HI AS nM NM MD jM jI --sjdbOverhang 149 --alignIntronMin 20 --alignIntronMax 300000 --alignMatesGapMax 300000 --alignSJoverhangMin 8 --outFilterMismatchNoverReadLmax 0.04 --outFilterMismatchNmax 999 --outFilterMultimapNmax 20 --alignSJDBoverhangMin 1
+[2026-03-22 04:55:25] INFO - Tool: Command completed successfully
+[2026-03-22 04:55:25] INFO - rskit.utils.parallel: [lhy-rep2] Quantifying...
+[2026-03-22 04:55:25] INFO - Tool: Quantification output already exists at /sri/home/sri2025201067/test/rnaseq-tools/data/03_quant/lhy-rep2, skipping
+[2026-03-22 04:55:25] INFO - rskit.utils.parallel: [lhy-rep2] Completed
+[2026-03-22 04:55:25] INFO - rskit.utils.parallel: Progress: 1/6 completed
+[2026-03-22 04:58:51] INFO - Tool: Command completed successfully
+[2026-03-22 04:58:51] INFO - rskit.utils.parallel: [WT-rep2] Quantifying...
+[2026-03-22 04:58:51] INFO - Tool: Quantification output already exists at /sri/home/sri2025201067/test/rnaseq-tools/data/03_quant/WT-rep2, skipping
+[2026-03-22 04:58:51] INFO - rskit.utils.parallel: [WT-rep2] Completed
+[2026-03-22 04:58:51] INFO - rskit.utils.parallel: Progress: 2/6 completed
+[2026-03-22 04:59:33] INFO - Tool: Command completed successfully
+[2026-03-22 04:59:33] INFO - rskit.utils.parallel: [WT-rep1] Quantifying...
+[2026-03-22 04:59:33] INFO - Tool: Quantification output already exists at /sri/home/sri2025201067/test/rnaseq-tools/data/03_quant/WT-rep1, skipping
+[2026-03-22 04:59:33] INFO - rskit.utils.parallel: [WT-rep1] Completed
+[2026-03-22 04:59:33] INFO - rskit.utils.parallel: Progress: 3/6 completed
+[2026-03-22 05:00:02] INFO - Tool: Command completed successfully
+[2026-03-22 05:00:02] INFO - rskit.utils.parallel: [lhy-rep1] Quantifying...
+[2026-03-22 05:00:02] INFO - Tool: Quantification output already exists at /sri/home/sri2025201067/test/rnaseq-tools/data/03_quant/lhy-rep1, skipping
+[2026-03-22 05:00:02] INFO - rskit.utils.parallel: [lhy-rep1] Completed
+[2026-03-22 05:00:02] INFO - rskit.utils.parallel: Progress: 4/6 completed
+[2026-03-22 05:01:22] INFO - Tool: Command completed successfully
+[2026-03-22 05:01:22] INFO - rskit.utils.parallel: [lhy-rep3] Quantifying...
+[2026-03-22 05:01:22] INFO - Tool: Quantification output already exists at /sri/home/sri2025201067/test/rnaseq-tools/data/03_quant/lhy-rep3, skipping
+[2026-03-22 05:01:22] INFO - rskit.utils.parallel: [lhy-rep3] Completed
+[2026-03-22 05:01:22] INFO - rskit.utils.parallel: Progress: 5/6 completed
+[2026-03-22 05:01:53] INFO - Tool: Command completed successfully
+[2026-03-22 05:01:53] INFO - rskit.utils.parallel: [WT-rep3] Quantifying...
+[2026-03-22 05:01:53] INFO - Tool: Quantification output already exists at /sri/home/sri2025201067/test/rnaseq-tools/data/03_quant/WT-rep3, skipping
+[2026-03-22 05:01:53] INFO - rskit.utils.parallel: [WT-rep3] Completed
+[2026-03-22 05:01:53] INFO - rskit.utils.parallel: Progress: 6/6 completed
+[2026-03-22 05:01:53] INFO - rskit.utils.parallel: All 6 samples completed!
+[2026-03-22 05:01:53] INFO - rskit.cli: Quantification completed. Processed 6 samples.
+[2026-03-22 05:01:53] INFO - rskit.cli: ============================================================
+[2026-03-22 05:01:53] INFO - rskit.cli: Step 2: DESeq2 Differential Expression Analysis
+[2026-03-22 05:01:53] INFO - rskit.cli: ============================================================
+[2026-03-22 05:01:53] INFO - rskit.core.deseq2: Loading metadata from /sri/home/sri2025201067/test/coldata.csv
+[2026-03-22 05:01:53] INFO - rskit.core.deseq2: Loaded metadata for 6 samples
+[2026-03-22 05:01:53] INFO - rskit.core.deseq2: Columns: ['id', 'condition', 'r1', 'r2']
+[2026-03-22 05:01:53] INFO - rskit.core.deseq2: Conditions: {'lhy': np.int64(3), 'WT': np.int64(3)}
+[2026-03-22 05:01:53] INFO - rskit.core.deseq2: Loading counts from Salmon directory: /sri/home/sri2025201067/test/rnaseq-tools/data/03_quant
+[2026-03-22 05:01:55] INFO - rskit.core.deseq2: Parsing GTF/GFF3 file: /sri/home/sri2025201067/test/Gmax_508_Wm82.a4.v1.gene_exons.gff3.gtf
+[2026-03-22 05:01:58] INFO - rskit.core.deseq2: Scanned 1163225 GTF/GFF3 lines
+[2026-03-22 05:01:58] INFO - rskit.core.deseq2: Extracted 86256 unique transcript-to-gene mappings
+[2026-03-22 05:01:58] INFO - rskit.core.deseq2: Saved tx2gene mapping to: /sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/tx2gene.tsv
+[2026-03-22 05:01:58] INFO - rskit.core.deseq2: tx2gene preview:
+                  transcript_id                     gene_id
+0  Glyma.01G000100.1.Wm82.a4.v1  Glyma.01G000100.Wm82.a4.v1
+1  Glyma.01G000137.1.Wm82.a4.v1  Glyma.01G000137.Wm82.a4.v1
+2  Glyma.01G000174.1.Wm82.a4.v1  Glyma.01G000174.Wm82.a4.v1
+3  Glyma.01G000211.1.Wm82.a4.v1  Glyma.01G000211.Wm82.a4.v1
+4  Glyma.01G000248.1.Wm82.a4.v1  Glyma.01G000248.Wm82.a4.v1
+[2026-03-22 05:01:58] INFO - rskit.core.deseq2: Ready for tximport: 86256 transcripts, 52872 genes
+[2026-03-22 05:01:58] INFO - rskit.core.deseq2: Running pytximport on 6 samples...
+Reading quantification files: 0it [00:00, ?it/s]Reading quantification files: 2it [00:00, 16.44it/s]Reading quantification files: 6it [00:00, 25.29it/s]Reading quantification files: 6it [00:00, 23.98it/s]
+[2026-03-22 05:01:58] INFO - rskit.core.deseq2: Loaded counts for 6 samples and 52872 genes
+INFO:rskit.core.deseq2:Loaded counts for 6 samples and 52872 genes
+[2026-03-22 05:01:59] INFO - rskit.core.deseq2: Gene counts saved to /sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/gene_counts_tximport.csv
+INFO:rskit.core.deseq2:Gene counts saved to /sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/gene_counts_tximport.csv
+[2026-03-22 05:01:59] INFO - rskit.core.deseq2: Saved tximport gene counts to /sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/gene_counts_tximport.csv
+INFO:rskit.core.deseq2:Saved tximport gene counts to /sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/gene_counts_tximport.csv
+[2026-03-22 05:01:59] INFO - rskit.core.deseq2: Running DESeq2 analysis...
+INFO:rskit.core.deseq2:Running DESeq2 analysis...
+[2026-03-22 05:02:01] INFO - rskit.core.deseq2: Creating DeseqDataSet...
+INFO:rskit.core.deseq2:Creating DeseqDataSet...
+[2026-03-22 05:02:01] INFO - rskit.core.deseq2: Running DESeq2 pipeline...
+INFO:rskit.core.deseq2:Running DESeq2 pipeline...
+Fitting size factors...
+... done in 0.01 seconds.
+
+Using None as control genes, passed at DeseqDataSet initialization
+Fitting dispersions...
+... done in 2.49 seconds.
+
+Fitting dispersion trend curve...
+... done in 0.53 seconds.
+
+Fitting MAP dispersions...
+... done in 2.64 seconds.
+
+Fitting LFCs...
+... done in 1.79 seconds.
+
+Calculating cook's distance...
+... done in 0.02 seconds.
+
+Replacing 0 outlier genes.
+
+[2026-03-22 05:02:12] INFO - rskit.core.deseq2: Using 'condition' column for contrast: lhy vs WT
+INFO:rskit.core.deseq2:Using 'condition' column for contrast: lhy vs WT
+[2026-03-22 05:02:12] INFO - rskit.core.deseq2: Running statistical analysis with contrast: ['condition', 'lhy', 'WT']
+INFO:rskit.core.deseq2:Running statistical analysis with contrast: ['condition', 'lhy', 'WT']
+Running Wald tests...
+... done in 1.52 seconds.
+
+[2026-03-22 05:02:14] WARNING - rskit.core.deseq2: Could not apply LFC shrinkage: "The coeff argument 'condition_lhy_vs_WT' should be one the LFC columns. The available LFC coeffs are Index(['condition[T.lhy]'], dtype='object')."
+WARNING:rskit.core.deseq2:Could not apply LFC shrinkage: "The coeff argument 'condition_lhy_vs_WT' should be one the LFC columns. The available LFC coeffs are Index(['condition[T.lhy]'], dtype='object')."
+[2026-03-22 05:02:14] INFO - rskit.core.deseq2: Results saved to /sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2
+INFO:rskit.core.deseq2:Results saved to /sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2
+[2026-03-22 05:02:14] INFO - rskit.core.deseq2: Saved results: {'results': '/sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/deseq2_results.csv', 'significant': '/sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/deseq2_significant.csv', 'upregulated': '/sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/deseq2_upregulated.csv', 'downregulated': '/sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/deseq2_downregulated.csv'}
+INFO:rskit.core.deseq2:Saved results: {'results': '/sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/deseq2_results.csv', 'significant': '/sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/deseq2_significant.csv', 'upregulated': '/sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/deseq2_upregulated.csv', 'downregulated': '/sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/deseq2_downregulated.csv'}
+[2026-03-22 05:02:14] INFO - rskit.core.deseq2: Generating plots...
+INFO:rskit.core.deseq2:Generating plots...
+/sri/home/sri2025201067/miniforge3/envs/salmon/lib/python3.14/site-packages/pandas/core/arraylike.py:399: RuntimeWarning: divide by zero encountered in log10
+  result = getattr(ufunc, method)(*inputs, **kwargs)
+[2026-03-22 05:02:15] INFO - rskit.core.deseq2: Volcano plot saved to /sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/volcano_plot.pdf
+INFO:rskit.core.deseq2:Volcano plot saved to /sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/volcano_plot.pdf
+[2026-03-22 05:02:16] INFO - rskit.core.deseq2: PCA plot saved to /sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/pca_plot.pdf
+INFO:rskit.core.deseq2:PCA plot saved to /sri/home/sri2025201067/test/rnaseq-tools/data/04_deseq2/pca_plot.pdf
+[2026-03-22 05:02:16] INFO - rskit.core.deseq2: 
+==================================================
+INFO:rskit.core.deseq2:
+==================================================
+[2026-03-22 05:02:16] INFO - rskit.core.deseq2: DESeq2 Analysis Summary
+INFO:rskit.core.deseq2:DESeq2 Analysis Summary
+[2026-03-22 05:02:16] INFO - rskit.core.deseq2: ==================================================
+INFO:rskit.core.deseq2:==================================================
+[2026-03-22 05:02:16] INFO - rskit.core.deseq2: Total genes: 52872
+INFO:rskit.core.deseq2:Total genes: 52872
+[2026-03-22 05:02:16] INFO - rskit.core.deseq2: Significant genes (padj < 0.05): 11523
+INFO:rskit.core.deseq2:Significant genes (padj < 0.05): 11523
+[2026-03-22 05:02:16] INFO - rskit.core.deseq2:   - Up-regulated: 5369
+INFO:rskit.core.deseq2:  - Up-regulated: 5369
+[2026-03-22 05:02:16] INFO - rskit.core.deseq2:   - Down-regulated: 6154
+INFO:rskit.core.deseq2:  - Down-regulated: 6154
+[2026-03-22 05:02:16] INFO - rskit.core.deseq2: ==================================================
+INFO:rskit.core.deseq2:==================================================
+[2026-03-22 05:02:16] INFO - rskit.cli: DESeq2 analysis completed successfully!
+INFO:rskit.cli:DESeq2 analysis completed successfully!
+[2026-03-22 05:02:16] INFO - rskit.cli: ============================================================
+INFO:rskit.cli:============================================================
+[2026-03-22 05:02:16] INFO - rskit.cli: Complete pipeline finished successfully!
+INFO:rskit.cli:Complete pipeline finished successfully!
+[2026-03-22 05:02:16] INFO - rskit.cli: Results saved to: rnaseq-tools/data/
+INFO:rskit.cli:Results saved to: rnaseq-tools/data/
+[2026-03-22 05:02:16] INFO - rskit.cli: ============================================================
+INFO:rskit.cli:============================================================
+Log2 fold change & Wald test p-value: condition lhy vs WT
+                             baseMean  log2FoldChange  ...    pvalue      padj
+Glyma.01G000100.Wm82.a4.v1   2.304557        0.002185  ...  0.998707       NaN
+Glyma.01G000137.Wm82.a4.v1   0.000000             NaN  ...       NaN       NaN
+Glyma.01G000174.Wm82.a4.v1   0.210150        0.982734  ...  0.824337       NaN
+Glyma.01G000211.Wm82.a4.v1   1.305631        3.848825  ...  0.130853       NaN
+Glyma.01G000248.Wm82.a4.v1   0.000000             NaN  ...       NaN       NaN
+...                               ...             ...  ...       ...       ...
+Glyma.U031229.Wm82.a4.v1     0.000000             NaN  ...       NaN       NaN
+Glyma.U031129.Wm82.a4.v1     0.000000             NaN  ...       NaN       NaN
+Glyma.U031329.Wm82.a4.v1     0.000000             NaN  ...       NaN       NaN
+Glyma.U031123.Wm82.a4.v1    52.510552       -0.078986  ...  0.785776  0.871423
+Glyma.U031116.Wm82.a4.v1     1.215018        2.569836  ...  0.260192       NaN
+
+[52872 rows x 6 columns]

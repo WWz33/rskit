@@ -1,0 +1,8 @@
+sample,id,condition,r1,r2
+lhy-rep1,lhy,lhy,/sri/home/sri2025201067/test/lhy-rep1_1.fastq.gz,/sri/home/sri2025201067/test/lhy-rep1_2.fastq.gz
+lhy-rep2,lhy,lhy,/sri/home/sri2025201067/test/lhy-rep2_1.fastq.gz,/sri/home/sri2025201067/test/lhy-rep2_2.fastq.gz
+lhy-rep3,lhy,lhy,/sri/home/sri2025201067/test/lhy-rep3_1.fastq.gz,/sri/home/sri2025201067/test/lhy-rep3_2.fastq.gz
+WT-rep1,WT,WT,/sri/home/sri2025201067/test/WT-rep1_1.fastq.gz,/sri/home/sri2025201067/test/WT-rep1_2.fastq.gz
+WT-rep2,WT,WT,/sri/home/sri2025201067/test/WT-rep2_1.fastq.gz,/sri/home/sri2025201067/test/WT-rep2_2.fastq.gz
+WT-rep3,WT,WT,/sri/home/sri2025201067/test/WT-rep3_1.fastq.gz,/sri/home/sri2025201067/test/WT-rep3_2.fastq.gz
+
