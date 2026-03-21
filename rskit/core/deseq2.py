@@ -71,7 +71,8 @@ class Deseq2Analyzer:
     
     def load_counts_from_salmon(self, salmon_dir: str, coldata: pd.DataFrame, 
                                  gtf_file: Optional[str] = None,
-                                 tx2gene: Optional[str] = None) -> pd.DataFrame:
+                                 tx2gene: Optional[str] = None,
+                                 output_dir: Optional[str] = None) -> pd.DataFrame:
         """Load count data from Salmon quantification results using pytximport.
         
         Args:
@@ -79,6 +80,7 @@ class Deseq2Analyzer:
             coldata: DataFrame with sample information (index=sample names)
             gtf_file: Path to GTF annotation file (to create tx2gene map)
             tx2gene: Path to tx2gene mapping file (CSV or TSV)
+            output_dir: Directory to save tx2gene.tsv for debugging
             
         Returns:
             DataFrame with gene-level counts (samples x genes)
@@ -124,6 +126,14 @@ class Deseq2Analyzer:
                 self.logger.warning("Renamed tx2gene columns to transcript_id and gene_id")
             else:
                 raise ValueError("tx2gene map must have at least 2 columns (transcript_id, gene_id)")
+        
+        # Save tx2gene for debugging (before tximport)
+        if output_dir:
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+            tx2gene_file = output_path / "tx2gene.tsv"
+            tx2gene_map.to_csv(tx2gene_file, sep='\t', index=False)
+            self.logger.info(f"Saved tx2gene mapping to {tx2gene_file}")
         
         # Run tximport
         self.logger.info(f"Running pytximport on {len(file_paths)} samples...")
@@ -643,7 +653,8 @@ def run_deseq2_cli(args):
             salmon_dir=args.salmon_dir,
             coldata=metadata_df,
             gtf_file=args.gtf,
-            tx2gene=args.tx2gene
+            tx2gene=args.tx2gene,
+            output_dir=str(output_dir)
         )
         
         # Save tximport-processed gene counts

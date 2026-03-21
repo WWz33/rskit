@@ -117,9 +117,17 @@ def main_deseq2(args):
     if args.salmon_dir and args.gene_counts:
         logger.warning("Both --salmon-dir and --gene-counts provided. Using --salmon-dir with pytximport")
     
-    # Setup output directory
-    output_dir = Path(args.output_dir)
+    # Setup work directory structure
+    workdirs = setup_workdir(args.work_dir)
+    
+    # Use default 04_deseq2 directory if output_dir not specified
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+    else:
+        output_dir = workdirs['deseq2']
+    
     output_dir.mkdir(parents=True, exist_ok=True)
+    args.output_dir = str(output_dir)
     
     # Run DESeq2 analysis
     try:
