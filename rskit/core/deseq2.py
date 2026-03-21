@@ -17,47 +17,31 @@ class Deseq2Analyzer:
         self.metadata_df = None
         
     def _create_tx2gene_from_gtf(self, gtf_file: str, output_dir: Optional[str] = None) -> pd.DataFrame:
-        """Create transcript-to-gene mapping from GTF file.
+        """Create transcript-to-gene mapping from GTF/GFF3 file.
         
         Args:
-            gtf_file: Path to GTF annotation file
+            gtf_file: Path to GTF/GFF3 annotation file
             output_dir: If provided, save tx2gene.tsv to this directory
             
         Returns:
             DataFrame with transcript_id and gene_id columns
         """
-        import re
+        from rskit.utils.gtf import open as gtf_open
         
-        self.logger.info(f"Parsing GTF file: {gtf_file}")
+        self.logger.info(f"Parsing GTF/GFF3 file: {gtf_file}")
         
         # Use dict to automatically deduplicate by transcript_id
         tx2gene_map = {}
         num_records = 0
         
-        re_attrs = re.compile(r'(\w+)\s+"([^"]*)";')
-        
         with open(gtf_file, 'r', encoding='utf-8', errors='ignore') as reader:
-            for line in reader:
-                if line.startswith('#'):
-                    continue
+            for rec in gtf_open(reader):
                 num_records += 1
-                cols = line.rstrip('\r\n').split('\t', 8)
-                if len(cols) < 9:
-                    continue
-                
-                feature = cols[2]
-                if feature != 'transcript':
-                    continue
-                
-                # Parse attributes
-                attrs = dict(m.groups() for m in re_attrs.finditer(cols[8]))
-                tx_id = attrs.get('transcript_id')
-                gene_id = attrs.get('gene_id')
-                
-                if tx_id and gene_id and tx_id not in tx2gene_map:
-                    tx2gene_map[tx_id] = gene_id
+                if rec.feature == 'transcript' and rec.transcript_id and rec.gene_id:
+                    if rec.transcript_id not in tx2gene_map:
+                        tx2gene_map[rec.transcript_id] = rec.gene_id
         
-        self.logger.info(f"Scanned {num_records} GTF lines")
+        self.logger.info(f"Scanned {num_records} GTF/GFF3 lines")
         self.logger.info(f"Extracted {len(tx2gene_map)} unique transcript-to-gene mappings")
         
         # Convert to DataFrame
