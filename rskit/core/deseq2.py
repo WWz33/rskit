@@ -155,11 +155,19 @@ class Deseq2Analyzer:
                 self.logger.error(f"Saved duplicates to {dup_file}")
             raise
         
-        # Extract counts matrix
+        # Extract counts matrix - pytximport returns xarray DataArray
         counts_matrix = results["counts"]
         
-        # Create DataFrame with sample names as index
-        counts_df = pd.DataFrame(counts_matrix.T, index=sample_names, columns=results["counts"].index)
+        # Convert xarray DataArray to pandas DataFrame
+        # DataArray has dims (sample, transcript/gene), need to transpose
+        counts_df = counts_matrix.to_pandas().T
+        counts_df.index.name = None
+        counts_df.columns.name = None
+        
+        # Ensure sample names match
+        if list(counts_df.columns) != sample_names:
+            counts_df = counts_df[sample_names]
+        
         counts_df = counts_df.round().astype(int)
         
         self.counts_df = counts_df
