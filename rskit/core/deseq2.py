@@ -34,34 +34,11 @@ class Deseq2Analyzer:
         
         with open(gtf_file, 'r', encoding='utf-8', errors='ignore') as reader:
             for rec in gtf_open(reader, 'ensembl'):
-<<<<<<< HEAD
                 if rec.feature == 'transcript':
                     tx2gene_list.append({
                         'transcript_id': rec.meta['transcript_id'],
                         'gene_id': rec.meta['gene_id']
                     })
-=======
-                # Only process transcript features
-                if rec.feature == 'transcript':
-                    if rec.transcript_id and rec.gene_id:
-                        tx2gene_dict[rec.transcript_id] = rec.gene_id
-        
-        # If no 'transcript' feature found, try other common feature types
-        if not tx2gene_dict:
-            self.logger.info("No 'transcript' features found, trying 'mRNA' for GFF3 format...")
-            with open(gtf_file, 'r', encoding='utf-8', errors='ignore') as reader:
-                for rec in gtf_open(reader):
-                    if rec.feature in ['mRNA', 'transcript', 'primary_transcript']:
-                        # For GFF3, ID is transcript_id, Parent is gene_id
-                        tx_id = rec.meta.get('ID') or rec.meta.get('transcript_id')
-                        gene_id = rec.meta.get('Parent') or rec.meta.get('gene_id')
-                        
-                        if tx_id and gene_id:
-                            # Clean up GFF3 IDs (remove prefixes like 'gene:')
-                            if gene_id.startswith('gene:'):
-                                gene_id = gene_id[5:]
-                            tx2gene_dict[tx_id] = gene_id
->>>>>>> d56fd7c00e33570c5171272d72363132904b69f4
         
         # Create DataFrame
         tx2gene_df = pd.DataFrame(tx2gene_list)
