@@ -159,14 +159,17 @@ class Deseq2Analyzer:
         counts_matrix = results["counts"]
         
         # Convert xarray DataArray to pandas DataFrame
-        # DataArray has dims (sample, transcript/gene), need to transpose
-        counts_df = counts_matrix.to_pandas().T
+        counts_df = counts_matrix.to_pandas()
+        
+        # Handle both Series and DataFrame cases
+        if isinstance(counts_df, pd.Series):
+            counts_df = counts_df.to_frame().T
+        
+        # Transpose to samples x genes format
+        counts_df = counts_df.T
+        
         counts_df.index.name = None
         counts_df.columns.name = None
-        
-        # Ensure sample names match
-        if list(counts_df.columns) != sample_names:
-            counts_df = counts_df[sample_names]
         
         counts_df = counts_df.round().astype(int)
         
