@@ -183,7 +183,9 @@ class Deseq2Analyzer:
         Returns:
             DataFrame with counts (samples x genes)
         """
-        counts_df = pd.read_csv(counts_file, index_col=0)
+        # Auto-detect separator based on file extension
+        sep = '\t' if counts_file.endswith('.tsv') else ','
+        counts_df = pd.read_csv(counts_file, sep=sep, index_col=0)
         
         # Check if we need to transpose (genes x samples -> samples x genes)
         # Heuristic: if columns are mostly numeric-looking sample names, transpose

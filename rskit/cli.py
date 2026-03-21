@@ -64,10 +64,12 @@ def main_quant(args):
     
     # Parse samples
     if args.sample_tsv:
-        samples_df = pd.read_csv(args.sample_tsv, sep='\t')
+        # Auto-detect separator based on file extension
+        sep = '\t' if args.sample_tsv.endswith('.tsv') else ','
+        samples_df = pd.read_csv(args.sample_tsv, sep=sep)
         required_cols = {'sample', 'r1', 'r2'}
         if not required_cols.issubset(samples_df.columns):
-            raise ValueError(f"TSV must contain columns: {required_cols}")
+            raise ValueError(f"Sample file must contain columns: {required_cols}")
         samples_list = [(row['sample'], Path(row['r1']).resolve(), Path(row['r2']).resolve()) 
                         for _, row in samples_df.iterrows()]
     else:
@@ -168,7 +170,7 @@ def main():
     parser_quant = subparsers.add_parser("quant", help="Complete quantification pipeline (index -> align -> quant)")
     
     parser_quant.add_argument("-s", "--sample", help="Sample name")
-    parser_quant.add_argument("-S", "--sample-tsv", help="TSV file with columns: sample, r1, r2")
+    parser_quant.add_argument("-S", "--sample-tsv", help="Sample file (CSV/TSV) with columns: sample, r1, r2. Auto-detects separator based on file extension (.tsv for tab, .csv for comma)")
     parser_quant.add_argument("-1", "--r1", required=True, help="First read file")
     parser_quant.add_argument("-2", "--r2", required=True, help="Second read file")
     parser_quant.add_argument("-g", "--genome-fasta", dest="genome_fasta", required=True, help="Genome FASTA file")
