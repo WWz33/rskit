@@ -63,10 +63,10 @@ def main_quant(args):
     workdirs = setup_workdir(args.output_dir)
     
     # Parse samples
-    if args.sample_tsv:
+    if args.coldata:
         # Auto-detect separator based on file extension
-        sep = '\t' if args.sample_tsv.endswith('.tsv') else ','
-        samples_df = pd.read_csv(args.sample_tsv, sep=sep)
+        sep = '\t' if args.coldata.endswith('.tsv') else ','
+        samples_df = pd.read_csv(args.coldata, sep=sep)
         required_cols = {'sample', 'r1', 'r2'}
         if not required_cols.issubset(samples_df.columns):
             raise ValueError(f"Sample file must contain columns: {required_cols}")
@@ -74,7 +74,7 @@ def main_quant(args):
                         for _, row in samples_df.iterrows()]
     else:
         if not all([args.sample, r1, r2]):
-            raise ValueError("Must provide --sample, --r1, --r2 or use --sample-tsv")
+            raise ValueError("Must provide --sample, --r1, --r2 or use --coldata")
         samples_list = [(args.sample, r1, r2)]
     
     # Process samples
@@ -159,6 +159,99 @@ def main_wgcna(args):
         logger.error(f"WGCNA analysis failed: {e}")
         raise
 
+def main_all(args):
+    """Run complete pipeline: quant -> deseq2"""
+    logger.info("="*60)
+    logger.info("Complete Pipeline: Quantification + DESeq2")
+    logger.info("="*60)
+    
+    # Convert paths to absolute
+    genome_fasta = Path(args.genome_fasta).resolve()
+    gtf_file = Path(args.gtf_file).resolve()
+    transcript_fasta = Path(args.transcript_fasta).resolve()
+    index_dir = Path(args.index_dir).resolve()
+    coldata_file = Path(args.coldata).resolve()
+    
+    # Setup work directory
+    workdirs = setup_workdir(args.output_dir)
+    
+    # Parse samples from coldata
+    sep = '\t' if str(coldata_file).endswith('.tsv') else ','
+    samples_df = pd.read_csv(coldata_file, sep=sep)
+    required_cols = {'sample', 'r1', 'r2'}
+    if not required_cols.issubset(samples_df.columns):
+        raise ValueError(f"Coldata file must contain columns: {required_cols}")
+    
+    samples_list = [(row['sample'], Path(row['r1']).resolve(), Path(row['r2']).resolve()) 
+                    for _, row in samples_df.iterrows()]
+    
+    # Step 1: Run quantification
+    logger.info("="*60)
+    logger.info("Step 1: Quantification Pipeline")
+    logger.info("="*60)
+    
+    samples = {}
+    for sample_name, r1_path, r2_path in samples_list:
+        if args.trim:
+            logger.info(f"Trimming {sample_name}...")
+            r1_clean, r2_clean = trim_reads(r1_path, r2_path, sample_name, workdirs['clean_data'], 
+                                           workdirs['clean_data_html'], workdirs['clean_data_json'], args.threads)
+            samples[sample_name] = {'fq1': r1_clean, 'fq2': r2_clean}
+        else:
+            samples[sample_name] = {'fq1': str(r1_path), 'fq2': str(r2_path)}
+    
+    config = PipelineConfig(
+        star=StarConfig(threads=args.threads),
+        salmon=SalmonConfig(threads=args.threads),
+        output_dir=str(workdirs['bam'])
+    )
+    pipeline = RNAseqPipeline(config)
+    results = pipeline.run(
+        samples=samples,
+        genome_fasta=str(genome_fasta),
+        gtf_file=str(gtf_file),
+        transcript_fasta=str(transcript_fasta),
+        index_dir=str(index_dir),
+        output_dir=str(workdirs['bam']),
+        quant_output_dir=str(workdirs['quant']),
+        force_index=args.force_index
+    )
+    logger.info(f"Quantification completed. Results: {results}")
+    
+    # Step 2: Run DESeq2
+    logger.info("="*60)
+    logger.info("Step 2: DESeq2 Differential Expression Analysis")
+    logger.info("="*60)
+    
+    # Create args namespace for deseq2
+    class Deseq2Args:
+        def __init__(self):
+            self.salmon_dir = str(workdirs['quant'])
+            self.gene_counts = None
+            self.coldata = str(coldata_file)
+            self.gtf = str(gtf_file)
+            self.tx2gene = args.tx2gene
+            self.work_dir = args.output_dir
+            self.output_dir = str(workdirs['deseq2'])
+            self.design = args.design
+            self.contrast = args.contrast
+            self.alpha = args.alpha
+            self.threads = args.threads
+    
+    deseq2_args = Deseq2Args()
+    
+    try:
+        analyzer = run_deseq2_cli(deseq2_args)
+        logger.info("DESeq2 analysis completed successfully!")
+    except Exception as e:
+        logger.error(f"DESeq2 analysis failed: {e}")
+        raise
+    
+    logger.info("="*60)
+    logger.info("Complete pipeline finished successfully!")
+    logger.info(f"Results saved to: {args.output_dir}")
+    logger.info("="*60)
+
 def main():
     parser = argparse.ArgumentParser(
         description="RNA-seq analysis toolkit",
@@ -170,7 +263,7 @@ def main():
     parser_quant = subparsers.add_parser("quant", help="Complete quantification pipeline (index -> align -> quant)")
     
     parser_quant.add_argument("-s", "--sample", help="Sample name")
-    parser_quant.add_argument("-S", "--sample-tsv", help="Sample file (CSV/TSV) with columns: sample, r1, r2. Auto-detects separator based on file extension (.tsv for tab, .csv for comma)")
+    parser_quant.add_argument("-S", "--coldata", help="Sample file (CSV/TSV) with columns: sample, r1, r2 (and optionally id, condition). Auto-detects separator based on file extension (.tsv for tab, .csv for comma)")
     parser_quant.add_argument("-1", "--r1", required=True, help="First read file")
     parser_quant.add_argument("-2", "--r2", required=True, help="Second read file")
     parser_quant.add_argument("-g", "--genome-fasta", dest="genome_fasta", required=True, help="Genome FASTA file")
@@ -212,17 +305,17 @@ Examples:
     
     # Input options (mutually exclusive)
     input_group = parser_deseq2.add_mutually_exclusive_group(required=True)
-    input_group.add_argument("--salmon-dir", dest="salmon_dir", 
+    input_group.add_argument("-sd", "--salmon-dir", dest="salmon_dir", 
         help="Directory containing Salmon quant subfolders (uses pytximport for gene count estimation)")
-    input_group.add_argument("--gene-counts", dest="gene_counts",
+    input_group.add_argument("-gc", "--gene-counts", dest="gene_counts",
         help="Path to gene counts matrix file (CSV/TSV, samples x genes)")
     
     # Required arguments
-    parser_deseq2.add_argument("--coldata", required=True,
+    parser_deseq2.add_argument("-S", "--coldata", required=True,
         help="Path to coldata/metadata file with columns: sample,id,condition (sample=folder name, id=group, condition=DE factor)")
-    parser_deseq2.add_argument("--gtf", 
+    parser_deseq2.add_argument("-gtf", "--gtf", 
         help="GTF annotation file (required when using --salmon-dir without --tx2gene)")
-    parser_deseq2.add_argument("--tx2gene", dest="tx2gene",
+    parser_deseq2.add_argument("-t2g", "--tx2gene", dest="tx2gene",
         help="Path to transcript-to-gene mapping file (CSV/TSV with transcript_id,gene_id columns)")
     
     # Output options
@@ -266,42 +359,99 @@ Examples:
         help="Output directory for WGCNA results")
     
     # Optional metadata files
-    parser_wgcna.add_argument("--sample-info", dest="sample_info",
+    parser_wgcna.add_argument("-S", "--coldata", dest="coldata",
         help="Path to sample metadata file (CSV/TSV)")
-    parser_wgcna.add_argument("--gene-info", dest="gene_info",
+    parser_wgcna.add_argument("-G", "--gene-info", dest="gene_info",
         help="Path to gene metadata file (CSV/TSV)")
     
     # Data options
-    parser_wgcna.add_argument("--sep", default=",",
+    parser_wgcna.add_argument("-sep", "--sep", default=",",
         help="Separator for input files (comma or tab)")
-    parser_wgcna.add_argument("--name", default="WGCNA",
+    parser_wgcna.add_argument("-n", "--name", default="WGCNA",
         help="Name for the WGCNA analysis")
-    parser_wgcna.add_argument("--species", 
+    parser_wgcna.add_argument("-s", "--species", 
         help="Species for enrichment analysis (Human, Mouse, Yeast, Fly, Fish, Worm)")
-    parser_wgcna.add_argument("--level", default="gene", choices=["gene", "transcript"],
+    parser_wgcna.add_argument("-l", "--level", default="gene", choices=["gene", "transcript"],
         help="Data level (gene or transcript)")
     
     # WGCNA parameters
-    parser_wgcna.add_argument("--network-type", dest="network_type", default="signed hybrid",
+    parser_wgcna.add_argument("-nt", "--network-type", dest="network_type", default="signed hybrid",
         choices=["unsigned", "signed", "signed hybrid"],
         help="Type of network to generate")
-    parser_wgcna.add_argument("--tom-type", dest="tom_type", default="signed",
+    parser_wgcna.add_argument("-tom", "--tom-type", dest="tom_type", default="signed",
         choices=["unsigned", "signed"],
         help="Type of topological overlap matrix")
-    parser_wgcna.add_argument("--min-module-size", dest="min_module_size", type=int, default=50,
+    parser_wgcna.add_argument("-min", "--min-module-size", dest="min_module_size", type=int, default=50,
         help="Minimum module size")
-    parser_wgcna.add_argument("--power", type=int,
+    parser_wgcna.add_argument("-p", "--power", type=int,
         help="Soft thresholding power (auto-detected if not specified)")
-    parser_wgcna.add_argument("--rsquared-cut", dest="rsquared_cut", type=float, default=0.9,
+    parser_wgcna.add_argument("-rsquared", "--rsquared-cut", dest="rsquared_cut", type=float, default=0.9,
         help="R-squared cutoff for scale-free topology")
-    parser_wgcna.add_argument("--mean-cut", dest="mean_cut", type=int, default=100,
+    parser_wgcna.add_argument("-mean", "--mean-cut", dest="mean_cut", type=int, default=100,
         help="Mean connectivity cutoff")
-    parser_wgcna.add_argument("--mediss-thresh", dest="mediss_thresh", type=float, default=0.2,
+    parser_wgcna.add_argument("-mediss", "--mediss-thresh", dest="mediss_thresh", type=float, default=0.2,
         help="Module eigengene dissimilarity threshold for merging")
-    parser_wgcna.add_argument("--tpm-cutoff", dest="tpm_cutoff", type=int, default=1,
+    parser_wgcna.add_argument("-tpm", "--tpm-cutoff", dest="tpm_cutoff", type=int, default=1,
         help="TPM cutoff for filtering low-expression genes")
     
     parser_wgcna.set_defaults(func=main_wgcna)
+    
+    # all command (quant -> deseq2)
+    parser_all = subparsers.add_parser("all", 
+        help="Complete pipeline: quantification + DESeq2 analysis",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        epilog="""
+Coldata format (CSV):
+    sample,id,condition,r1,r2
+    sample1,ctrl,control,sample1_R1.fq.gz,sample1_R2.fq.gz
+    sample2,ctrl,control,sample2_R1.fq.gz,sample2_R2.fq.gz
+    sample3,treat,treatment,sample3_R1.fq.gz,sample3_R2.fq.gz
+    sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
+
+Examples:
+    # Basic analysis with default design (~condition)
+    rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
+    
+    # Multi-factor design with batch effect
+    rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ --design "~id + condition"
+    
+    # Specify contrast explicitly
+    rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ --contrast "condition,treatment,control"
+        """)
+    
+    # Required arguments
+    parser_all.add_argument("-S", "--coldata", required=True,
+        help="Coldata file (CSV/TSV) with columns: sample,id,condition,r1,r2")
+    parser_all.add_argument("-g", "--genome-fasta", dest="genome_fasta", required=True,
+        help="Genome FASTA file")
+    parser_all.add_argument("-gtf", "--gtf-file", dest="gtf_file", required=True,
+        help="GTF annotation file")
+    parser_all.add_argument("-gf", "--transcript-fasta", dest="transcript_fasta", required=True,
+        help="Transcript FASTA file")
+    parser_all.add_argument("-o", "--output-dir", dest="output_dir", required=True,
+        help="Output directory (work directory)")
+    
+    # Optional arguments
+    parser_all.add_argument("--index-dir", dest="index_dir", default="STAR_index",
+        help="STAR index directory")
+    parser_all.add_argument("-t2g", "--tx2gene", dest="tx2gene",
+        help="Path to transcript-to-gene mapping file (CSV/TSV with transcript_id,gene_id columns)")
+    parser_all.add_argument("-t", "--threads", type=int, default=8,
+        help="Number of threads")
+    parser_all.add_argument("--trim", action="store_true",
+        help="Trim reads with fastp")
+    parser_all.add_argument("--force-index", action="store_true",
+        help="Force rebuild index")
+    
+    # DESeq2 options
+    parser_all.add_argument("--design", default="~condition",
+        help="Design formula (e.g., '~condition' for single factor, '~id + condition' for multi-factor)")
+    parser_all.add_argument("--contrast",
+        help="Contrast specification: 'factor,level1,level2' (e.g., 'condition,treatment,control'). If not specified, will auto-detect from 'condition' column.")
+    parser_all.add_argument("--alpha", type=float, default=0.05,
+        help="Significance threshold for adjusted p-values")
+    
+    parser_all.set_defaults(func=main_all)
     
     args = parser.parse_args()
     if vars(args) == {}:

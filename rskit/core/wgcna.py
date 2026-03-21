@@ -28,7 +28,7 @@ class WGCNAAnalyzer:
         self.level = level
         self.wgcna_obj = None
         
-    def load_data(self, expression_file, sample_info_file=None, gene_info_file=None, sep=','):
+    def load_data(self, expression_file, coldata=None, gene_info_file=None, sep=','):
         """Load expression data and metadata"""
         try:
             import PyWGCNA
@@ -46,12 +46,12 @@ class WGCNAAnalyzer:
             
         # Load sample metadata if provided
         sample_info = None
-        if sample_info_file:
-            logger.info(f"Loading sample metadata from {sample_info_file}")
-            if sample_info_file.endswith('.csv'):
-                sample_info = pd.read_csv(sample_info_file, index_col=0)
+        if coldata:
+            logger.info(f"Loading sample metadata from {coldata}")
+            if coldata.endswith('.csv'):
+                sample_info = pd.read_csv(coldata, index_col=0)
             else:
-                sample_info = pd.read_csv(sample_info_file, sep='\t', index_col=0)
+                sample_info = pd.read_csv(coldata, sep='\t', index_col=0)
                 
         # Load gene metadata if provided
         gene_info = None
@@ -166,7 +166,7 @@ def run_wgcna_cli(args):
     # Load data
     analyzer.load_data(
         expression_file=args.expression,
-        sample_info_file=args.sample_info,
+        coldata=args.coldata,
         gene_info_file=args.gene_info,
         sep=args.sep
     )

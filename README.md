@@ -8,6 +8,7 @@ A Python toolkit for RNA-seq analysis, providing command-line interface and Pyth
 - **Differential Expression Analysis**: DESeq2-based analysis with automatic data processing
 - **Co-expression Network Analysis**: WGCNA for gene module detection
 - **Flexible Input Formats**: Automatic detection of CSV/TSV files
+- **Unified `--coldata`**: Single sample metadata file works across all subcommands
 - **Command-line Interface**: Easy-to-use CLI for all analyses
 - **Python API**: Programmatic access for custom workflows
 
@@ -51,7 +52,7 @@ rskit quant \
 rskit quant -S samples.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
 ```
 
-**Sample sheet format** (CSV or TSV):
+**Coldata format** (CSV or TSV):
 
 Basic format (quant only):
 ```csv
@@ -60,7 +61,7 @@ sample1,sample1_R1.fq.gz,sample1_R2.fq.gz
 sample2,sample2_R1.fq.gz,sample2_R2.fq.gz
 ```
 
-Extended format (compatible with both quant and deseq2):
+Full format (compatible with quant, deseq2, and wgcna):
 ```csv
 sample,id,condition,r1,r2
 sample1,ctrl,control,sample1_R1.fq.gz,sample1_R2.fq.gz
@@ -69,21 +70,24 @@ sample3,treat,treatment,sample3_R1.fq.gz,sample3_R2.fq.gz
 sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
 ```
 
-> **Note**: The extended format with `id` and `condition` columns can be used directly as coldata for deseq2 analysis after quantification.
+> **Tip**: Use the full format with a single `coldata.csv` for your entire workflow. Each subcommand reads only the columns it needs.
 
 ### 2. Differential Expression Analysis
 
 Perform DESeq2 analysis on quantified data:
 
 ```bash
-# From Salmon quantification directory
+# From Salmon quantification directory (long options)
 rskit deseq2 --salmon-dir ./03_quant --coldata coldata.csv --gtf annotation.gtf
+
+# From Salmon quantification directory (short options)
+rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf
 
 # From gene counts matrix
 rskit deseq2 --gene-counts counts.csv --coldata coldata.csv
 ```
 
-**Coldata format** (CSV):
+**Coldata format** (CSV or TSV):
 
 Basic format (deseq2 only):
 ```csv
@@ -94,46 +98,53 @@ sample3,treat,treatment
 sample4,treat,treatment
 ```
 
-> **Tip**: Use the same CSV file for both quant and deseq2 by including `r1` and `r2` columns:
-> ```csv
-> sample,id,condition,r1,r2
-> sample1,ctrl,control,sample1_R1.fq.gz,sample1_R2.fq.gz
-> sample2,ctrl,control,sample2_R1.fq.gz,sample2_R2.fq.gz
-> sample3,treat,treatment,sample3_R1.fq.gz,sample3_R2.fq.gz
-> sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
-> ```
+Full format (compatible with quant, deseq2, and wgcna):
+```csv
+sample,id,condition,r1,r2
+sample1,ctrl,control,sample1_R1.fq.gz,sample1_R2.fq.gz
+sample2,ctrl,control,sample2_R1.fq.gz,sample2_R2.fq.gz
+sample3,treat,treatment,sample3_R1.fq.gz,sample3_R2.fq.gz
+sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
+```
+
+> **Tip**: Use the full format to share one `coldata.csv` across quant, deseq2, and wgcna. Each subcommand reads only the columns it needs.
 
 **Advanced options:**
 ```bash
-# Multi-factor design
-rskit deseq2 --salmon-dir ./03_quant --coldata coldata.csv --gtf annotation.gtf --design "~batch + condition"
+# Multi-factor design (column names must exist in coldata)
+rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf --design "~batch + condition"
 
 # Specify contrast
-rskit deseq2 --salmon-dir ./03_quant --coldata coldata.csv --gtf annotation.gtf --contrast "condition,treatment,control"
+rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf --contrast "condition,treatment,control"
 ```
+
+> **Note**: The `--design` formula uses R-style syntax. Column names in the formula (e.g., `batch`, `condition`) must exist in your coldata file. PyDESeq2 will validate these column names when creating the design matrix.
 
 ### 3. WGCNA Co-expression Network Analysis
 
 Perform weighted gene co-expression network analysis:
 
 ```bash
-# Basic analysis
+# Basic analysis (long options)
 rskit wgcna --expression expression.csv --output-dir ./wgcna_results
+
+# Basic analysis (short options)
+rskit wgcna -e expression.csv -o ./wgcna_results
 
 # With sample and gene metadata
 rskit wgcna \
-  --expression expression.csv \
-  --sample-info sample_info.csv \
-  --gene-info gene_info.csv \
-  --output-dir ./wgcna_results
+  -e expression.csv \
+  -S sample_info.csv \
+  -G gene_info.csv \
+  -o ./wgcna_results
 
 # Custom network parameters
 rskit wgcna \
-  --expression expression.csv \
-  --output-dir ./wgcna_results \
-  --network-type signed \
-  --min-module-size 30 \
-  --power 6
+  -e expression.csv \
+  -o ./wgcna_results \
+  -nt signed \
+  -min 30 \
+  -p 6
 ```
 
 **Input file formats:**
@@ -145,23 +156,23 @@ sample1,12.5,8.3,15.2
 sample2,11.8,9.1,14.8
 ```
 
-Sample metadata (CSV):
+**Coldata format** (CSV or TSV, compatible with quant and deseq2):
 
-Basic format:
+Basic format (wgcna only):
 ```csv
 sample,condition
 sample1,control
 sample2,treatment
 ```
 
-Extended format (compatible with deseq2):
+Full format (compatible with quant, deseq2, and wgcna):
 ```csv
-sample,id,condition
-sample1,ctrl,control
-sample2,treat,treatment
+sample,id,condition,r1,r2
+sample1,ctrl,control,sample1_R1.fq.gz,sample1_R2.fq.gz
+sample2,treat,treatment,sample2_R1.fq.gz,sample2_R2.fq.gz
 ```
 
-> **Note**: The sample metadata format is compatible with deseq2 coldata. You can use the same file for both analyses.
+> **Tip**: Use the full format to share one `coldata.csv` across quant, deseq2, and wgcna.
 
 Gene metadata (CSV):
 ```csv
@@ -176,59 +187,60 @@ GENE2,TP53,protein_coding
 
 Complete quantification pipeline (index → align → quant).
 
-| Option | Description |
-|--------|-------------|
-| `-s, --sample` | Sample name (for single sample) |
-| `-S, --sample-tsv` | Sample sheet file (CSV/TSV) |
-| `-1, --r1` | First read file |
-| `-2, --r2` | Second read file |
-| `-g, --genome-fasta` | Genome FASTA file |
-| `-gtf, --gtf-file` | GTF annotation file |
-| `-gf, --transcript-fasta` | Transcript FASTA file |
-| `-o, --output-dir` | Output directory |
-| `--index-dir` | STAR index directory (default: STAR_index) |
-| `-t, --threads` | Number of threads (default: 8) |
-| `--trim` | Trim reads with fastp |
-| `--force-index` | Force rebuild index |
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--sample` | `-s` | Sample name (for single sample) |
+| `--coldata` | `-S` | Sample sheet file (CSV/TSV) |
+| `--r1` | `-1` | First read file |
+| `--r2` | `-2` | Second read file |
+| `--genome-fasta` | `-g` | Genome FASTA file |
+| `--gtf-file` | `-gtf` | GTF annotation file |
+| `--transcript-fasta` | `-gf` | Transcript FASTA file |
+| `--output-dir` | `-o` | Output directory |
+| `--index-dir` | | STAR index directory (default: STAR_index) |
+| `--threads` | `-t` | Number of threads (default: 8) |
+| `--trim` | | Trim reads with fastp |
+| `--force-index` | | Force rebuild index |
 
 ### rskit deseq2
 
 DESeq2 differential expression analysis.
 
-| Option | Description |
-|--------|-------------|
-| `--salmon-dir` | Directory containing Salmon quant folders |
-| `--gene-counts` | Gene counts matrix file |
-| `--coldata` | Sample metadata file (required) |
-| `--gtf` | GTF annotation file |
-| `--tx2gene` | Transcript-to-gene mapping file |
-| `--design` | Design formula (default: ~condition) |
-| `--contrast` | Contrast specification |
-| `--alpha` | Significance threshold (default: 0.05) |
-| `-o, --output-dir` | Output directory |
-| `-t, --threads` | Number of threads |
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--salmon-dir` | `-sd` | Directory containing Salmon quant folders |
+| `--gene-counts` | `-gc` | Gene counts matrix file |
+| `--coldata` | `-S` | Sample metadata file (required) |
+| `--gtf` | `-gtf` | GTF annotation file |
+| `--tx2gene` | `-t2g` | Transcript-to-gene mapping file |
+| `--design` | | Design formula (default: ~condition) |
+| `--contrast` | | Contrast specification |
+| `--alpha` | | Significance threshold (default: 0.05) |
+| `-o, --output-dir` | `-o` | Output directory |
+| `-t, --threads` | `-t` | Number of threads |
 
 ### rskit wgcna
 
 WGCNA co-expression network analysis.
 
-| Option | Description |
-|--------|-------------|
-| `-e, --expression` | Expression matrix file (required) |
-| `-o, --output-dir` | Output directory (required) |
-| `--sample-info` | Sample metadata file |
-| `--gene-info` | Gene metadata file |
-| `--name` | Analysis name (default: WGCNA) |
-| `--network-type` | Network type: unsigned, signed, signed hybrid (default: signed hybrid) |
-| `--tom-type` | TOM type: unsigned, signed (default: signed) |
-| `--min-module-size` | Minimum module size (default: 50) |
-| `--power` | Soft thresholding power (auto-detected if not specified) |
-| `--rsquared-cut` | R-squared cutoff (default: 0.9) |
-| `--mean-cut` | Mean connectivity cutoff (default: 100) |
-| `--mediss-thresh` | Module merging threshold (default: 0.2) |
-| `--tpm-cutoff` | TPM cutoff for filtering (default: 1) |
-| `--species` | Species for enrichment analysis |
-| `--level` | Data level: gene, transcript (default: gene) |
+| Option | Short | Description |
+|--------|-------|-------------|
+| `-e, --expression` | `-e` | Expression matrix file (required) |
+| `-o, --output-dir` | `-o` | Output directory (required) |
+| `--coldata` | `-S` | Sample metadata file |
+| `--gene-info` | `-G` | Gene metadata file |
+| `--sep` | `-sep` | Separator for input files (default: ,) |
+| `--name` | `-n` | Analysis name (default: WGCNA) |
+| `--species` | `-s` | Species for enrichment analysis |
+| `--level` | `-l` | Data level: gene, transcript (default: gene) |
+| `--network-type` | `-nt` | Network type: unsigned, signed, signed hybrid (default: signed hybrid) |
+| `--tom-type` | `-tom` | TOM type: unsigned, signed (default: signed) |
+| `--min-module-size` | `-min` | Minimum module size (default: 50) |
+| `--power` | `-p` | Soft thresholding power (auto-detected if not specified) |
+| `--rsquared-cut` | `-rsquared` | R-squared cutoff (default: 0.9) |
+| `--mean-cut` | `-mean` | Mean connectivity cutoff (default: 100) |
+| `--mediss-thresh` | `-mediss` | Module merging threshold (default: 0.2) |
+| `--tpm-cutoff` | `-tpm` | TPM cutoff for filtering (default: 1) |
 
 ## Python API
 
@@ -294,7 +306,7 @@ analyzer = WGCNAAnalyzer(
 # Load data
 analyzer.load_data(
     expression_file="expression.csv",
-    sample_info_file="sample_info.csv",
+    coldata="coldata.csv",
     gene_info_file="gene_info.csv"
 )
 
@@ -338,10 +350,48 @@ wgcna_results/
 
 - **Automatic separator detection**: All subcommands automatically detect CSV (comma-separated) and TSV (tab-separated) files based on file extension
 - **Gene expression matrix**: Rows = samples, Columns = genes
-- **Sample metadata**: First column should contain sample identifiers matching the expression matrix
 - **Gene metadata**: First column should contain gene identifiers matching the expression matrix columns
-- **Unified sample sheet**: Use a single CSV with columns `sample,id,condition,r1,r2` for both quant and deseq2 workflows
-- **Cross-tool compatibility**: Sample metadata files (coldata) are compatible between deseq2 and wgcna - use `sample,id,condition` format for both
+
+### Unified `--coldata` Parameter
+
+All three subcommands use the same `--coldata` / `-S` parameter for sample metadata:
+
+| 子命令 | coldata 用途 | 必需列 |
+|--------|-------------|--------|
+| quant | 样本文件（含 reads 路径） | `sample, r1, r2` |
+| deseq2 | 样本元数据 | `sample, id, condition` |
+| wgcna | 样本元数据 | `sample` + 任意元数据列 |
+
+### Coldata Format Compatibility
+
+**Full format** (compatible with all three subcommands):
+```csv
+sample,id,condition,r1,r2
+sample1,ctrl,control,sample1_R1.fq.gz,sample1_R2.fq.gz
+sample2,ctrl,control,sample2_R1.fq.gz,sample2_R2.fq.gz
+sample3,treat,treatment,sample3_R1.fq.gz,sample3_R2.fq.gz
+sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
+```
+
+**Usage scenarios**:
+
+```bash
+# 1. quant only (reads sample, r1, r2 columns)
+rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
+
+# 2. deseq2 only (reads sample, id, condition columns)
+rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf
+
+# 3. wgcna only (reads sample + any metadata columns)
+rskit wgcna -e expression.csv -S coldata.csv -o ./wgcna_results
+
+# 4. Full pipeline: quant → deseq2 → wgcna (same coldata file for all)
+rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
+rskit deseq2 -sd results/03_quant -S coldata.csv -gtf annotation.gtf
+rskit wgcna -e results/03_quant/gene_counts.csv -S coldata.csv -o ./wgcna_results
+```
+
+> **Key Point**: Each subcommand reads only the columns it needs from `--coldata`, so you can maintain a single coldata file for your entire analysis workflow.
 
 ## Citation
 
