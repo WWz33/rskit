@@ -137,6 +137,8 @@ class Deseq2Analyzer:
                 data_type="salmon",
                 transcript_gene_map=tx2gene_map,
                 counts_from_abundance="length_scaled_tpm",
+                ignore_transcript_version=False,
+                ignore_after_bar=False,
                 output_type="dict"
             )
         except AssertionError as e:
