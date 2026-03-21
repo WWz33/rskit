@@ -52,9 +52,12 @@ def trim_reads(read1, read2, sample, clean_data_dir, html_dir, json_dir, threads
 def main_quant(args):
     """Run quantification pipeline"""
     from rskit.utils.validators import check_and_prepare_index
-    from rskit.utils.parallel import get_optimal_threads
+    from rskit.utils.parallel import calculate_threads_per_sample, run_samples_parallel
+    from rskit.core.pipeline import RNAseqPipeline
+    from rskit.core.star import StarIndexer
+    from rskit.config import StarConfig, SalmonConfig, PipelineConfig
     
-    # Convert paths to absolute before changing directory
+    # Convert paths to absolute
     r1 = Path(args.r1).resolve() if args.r1 else None
     r2 = Path(args.r2).resolve() if args.r2 else None
     genome_fasta = Path(args.genome_fasta).resolve()
@@ -70,9 +73,13 @@ def main_quant(args):
     else:
         index_dir, needs_build = check_and_prepare_index(workdirs['index'], args.force_index)
     
+    # Build index if needed
+    if needs_build:
+        indexer = StarIndexer(StarConfig(threads=args.threads))
+        indexer.build_index(str(genome_fasta), str(gtf_file), str(index_dir), force=args.force_index)
+    
     # Parse samples
     if args.coldata:
-        # Auto-detect separator based on file extension
         sep = '\t' if args.coldata.endswith('.tsv') else ','
         samples_df = pd.read_csv(args.coldata, sep=sep)
         required_cols = {'sample', 'r1', 'r2'}
@@ -80,46 +87,53 @@ def main_quant(args):
             raise ValueError(f"Sample file must contain columns: {required_cols}")
         samples_list = [(row['sample'], Path(row['r1']).resolve(), Path(row['r2']).resolve()) 
                         for _, row in samples_df.iterrows()]
-        
-        # Calculate threads per sample if --parallel is specified
-        if args.parallel:
-            threads, num_samples = get_optimal_threads(args.parallel, coldata_file=args.coldata)
-        else:
-            threads = args.threads
     else:
         if not all([args.sample, r1, r2]):
             raise ValueError("Must provide --sample, --r1, --r2 or use --coldata")
         samples_list = [(args.sample, r1, r2)]
-        threads = args.threads
     
-    # Process samples
+    # Calculate threads per sample
+    num_samples = len(samples_list)
+    if args.parallel:
+        threads_per_sample = calculate_threads_per_sample(args.parallel, num_samples)
+        logger.info(f"Parallel: {args.parallel} cores / {num_samples} samples = {threads_per_sample} threads/sample")
+    else:
+        threads_per_sample = args.threads
+    
+    # Prepare samples dict
     samples = {}
     for sample_name, r1_path, r2_path in samples_list:
         if args.trim:
             logger.info(f"Trimming {sample_name}...")
             r1_clean, r2_clean = trim_reads(r1_path, r2_path, sample_name, workdirs['clean_data'], 
-                                           workdirs['clean_data_html'], workdirs['clean_data_json'], threads)
+                                           workdirs['clean_data_html'], workdirs['clean_data_json'], threads_per_sample)
             samples[sample_name] = {'fq1': r1_clean, 'fq2': r2_clean}
         else:
             samples[sample_name] = {'fq1': str(r1_path), 'fq2': str(r2_path)}
     
-    config = PipelineConfig(
-        star=StarConfig(threads=threads),
-        salmon=SalmonConfig(threads=threads),
-        output_dir=str(workdirs['bam'])
-    )
-    pipeline = RNAseqPipeline(config)
-    results = pipeline.run(
-        samples=samples,
-        genome_fasta=str(genome_fasta),
-        gtf_file=str(gtf_file),
-        transcript_fasta=str(transcript_fasta),
-        index_dir=str(index_dir),
-        output_dir=str(workdirs['bam']),
-        quant_output_dir=str(workdirs['quant']),
-        force_index=args.force_index
-    )
-    logger.info(f"Pipeline completed. Results: {results}")
+    # Run pipeline (parallel or sequential)
+    if args.parallel and num_samples > 1:
+        results = run_samples_parallel(samples, str(index_dir), str(transcript_fasta), 
+                                       workdirs, threads_per_sample)
+    else:
+        config = PipelineConfig(
+            star=StarConfig(threads=threads_per_sample),
+            salmon=SalmonConfig(threads=threads_per_sample),
+            output_dir=str(workdirs['bam'])
+        )
+        pipeline = RNAseqPipeline(config)
+        results = pipeline.run(
+            samples=samples,
+            genome_fasta=str(genome_fasta),
+            gtf_file=str(gtf_file),
+            transcript_fasta=str(transcript_fasta),
+            index_dir=str(index_dir),
+            output_dir=str(workdirs['bam']),
+            quant_output_dir=str(workdirs['quant']),
+            force_index=False
+        )
+    
+    logger.info(f"Pipeline completed. Processed {len(results)} samples.")
 
 def main_deseq2(args):
     """Run DESeq2 differential expression analysis"""
@@ -177,7 +191,10 @@ def main_wgcna(args):
 def main_all(args):
     """Run complete pipeline: quant -> deseq2"""
     from rskit.utils.validators import check_and_prepare_index
-    from rskit.utils.parallel import get_optimal_threads
+    from rskit.utils.parallel import calculate_threads_per_sample, run_samples_parallel
+    from rskit.core.pipeline import RNAseqPipeline
+    from rskit.core.star import StarIndexer
+    from rskit.config import StarConfig, SalmonConfig, PipelineConfig
     
     logger.info("="*60)
     logger.info("Complete Pipeline: Quantification + DESeq2")
@@ -198,6 +215,11 @@ def main_all(args):
     else:
         index_dir, needs_build = check_and_prepare_index(workdirs['index'], args.force_index)
     
+    # Build index if needed
+    if needs_build:
+        indexer = StarIndexer(StarConfig(threads=args.threads))
+        indexer.build_index(str(genome_fasta), str(gtf_file), str(index_dir), force=args.force_index)
+    
     # Parse samples from coldata
     sep = '\t' if str(coldata_file).endswith('.tsv') else ','
     samples_df = pd.read_csv(coldata_file, sep=sep)
@@ -208,11 +230,13 @@ def main_all(args):
     samples_list = [(row['sample'], Path(row['r1']).resolve(), Path(row['r2']).resolve()) 
                     for _, row in samples_df.iterrows()]
     
-    # Calculate threads per sample if --parallel is specified
+    # Calculate threads per sample
+    num_samples = len(samples_list)
     if args.parallel:
-        threads, num_samples = get_optimal_threads(args.parallel, coldata_file=str(coldata_file))
+        threads_per_sample = calculate_threads_per_sample(args.parallel, num_samples)
+        logger.info(f"Parallel: {args.parallel} cores / {num_samples} samples = {threads_per_sample} threads/sample")
     else:
-        threads = args.threads
+        threads_per_sample = args.threads
     
     # Step 1: Run quantification
     logger.info("="*60)
@@ -224,28 +248,34 @@ def main_all(args):
         if args.trim:
             logger.info(f"Trimming {sample_name}...")
             r1_clean, r2_clean = trim_reads(r1_path, r2_path, sample_name, workdirs['clean_data'], 
-                                           workdirs['clean_data_html'], workdirs['clean_data_json'], threads)
+                                           workdirs['clean_data_html'], workdirs['clean_data_json'], threads_per_sample)
             samples[sample_name] = {'fq1': r1_clean, 'fq2': r2_clean}
         else:
             samples[sample_name] = {'fq1': str(r1_path), 'fq2': str(r2_path)}
     
-    config = PipelineConfig(
-        star=StarConfig(threads=threads),
-        salmon=SalmonConfig(threads=threads),
-        output_dir=str(workdirs['bam'])
-    )
-    pipeline = RNAseqPipeline(config)
-    results = pipeline.run(
-        samples=samples,
-        genome_fasta=str(genome_fasta),
-        gtf_file=str(gtf_file),
-        transcript_fasta=str(transcript_fasta),
-        index_dir=str(index_dir),
-        output_dir=str(workdirs['bam']),
-        quant_output_dir=str(workdirs['quant']),
-        force_index=args.force_index
-    )
-    logger.info(f"Quantification completed. Results: {results}")
+    # Run pipeline (parallel or sequential)
+    if args.parallel and num_samples > 1:
+        results = run_samples_parallel(samples, str(index_dir), str(transcript_fasta), 
+                                       workdirs, threads_per_sample)
+    else:
+        config = PipelineConfig(
+            star=StarConfig(threads=threads_per_sample),
+            salmon=SalmonConfig(threads=threads_per_sample),
+            output_dir=str(workdirs['bam'])
+        )
+        pipeline = RNAseqPipeline(config)
+        results = pipeline.run(
+            samples=samples,
+            genome_fasta=str(genome_fasta),
+            gtf_file=str(gtf_file),
+            transcript_fasta=str(transcript_fasta),
+            index_dir=str(index_dir),
+            output_dir=str(workdirs['bam']),
+            quant_output_dir=str(workdirs['quant']),
+            force_index=False
+        )
+    
+    logger.info(f"Quantification completed. Processed {len(results)} samples.")
     
     # Step 2: Run DESeq2
     logger.info("="*60)

@@ -114,7 +114,7 @@ Complete pipeline: quantification + DESeq2 analysis.
 | `-idx, --index-dir` | STAR index directory (default: `<output_dir>/00_index`) |
 | `-t2g, --tx2gene` | Transcript-to-gene mapping file |
 | `-t, --threads` | Number of threads per sample (default: 8) |
-| `-p, --parallel` | Total cores for parallel processing (divided by sample count) |
+| `-p, --parallel` | Total cores for parallel processing (samples run simultaneously) |
 | `--trim` | Trim reads with fastp |
 | `--force-index` | Force rebuild index |
 | `--design` | Design formula (default: ~condition) |
@@ -124,7 +124,7 @@ Complete pipeline: quantification + DESeq2 analysis.
 > **Note**: 
 > - If `--index-dir` is not specified, index will be stored in `<output_dir>/00_index/`
 > - If a valid STAR index exists, it will be reused automatically (use `--force-index` to rebuild)
-> - When using `--parallel`, threads per sample = parallel cores / number of samples
+> - When using `--parallel`, samples are processed in parallel with `parallel_cores / num_samples` threads each
 
 ### rskit quant
 
@@ -142,14 +142,14 @@ Complete quantification pipeline (index → align → quant).
 | `-o, --output-dir` | Output directory (required) |
 | `-idx, --index-dir` | STAR index directory (default: `<output_dir>/00_index`) |
 | `-t, --threads` | Number of threads per sample (default: 8) |
-| `-p, --parallel` | Total cores for parallel processing (divided by sample count) |
+| `-p, --parallel` | Total cores for parallel processing (samples run simultaneously) |
 | `--trim` | Trim reads with fastp |
 | `--force-index` | Force rebuild index |
 
 > **Note**: 
 > - If `--index-dir` is not specified, index will be stored in `<output_dir>/00_index/`
 > - If a valid STAR index exists, it will be reused automatically (use `--force-index` to rebuild)
-> - When using `--parallel` with `--coldata`, threads per sample = parallel cores / number of samples
+> - When using `--parallel` with `--coldata`, samples are processed in parallel with `parallel_cores / num_samples` threads each
 
 ### rskit deseq2
 
