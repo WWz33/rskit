@@ -139,7 +139,7 @@ class Deseq2Analyzer:
                 counts_from_abundance="length_scaled_tpm",
                 ignore_transcript_version=False,
                 ignore_after_bar=False,
-                output_type="dict"
+                output_type="anndata"
             )
         except AssertionError as e:
             self.logger.error(f"pytximport failed: {e}")
@@ -155,21 +155,17 @@ class Deseq2Analyzer:
                 self.logger.error(f"Saved duplicates to {dup_file}")
             raise
         
-        # Extract counts matrix - pytximport returns xarray DataArray
-        counts_matrix = results["counts"]
+        # Convert AnnData to DataFrame for PyDESeq2
+        # AnnData obs index is file path, need to rename to sample names
+        counts_df = pd.DataFrame(
+            results.X,
+            index=results.obs.index,
+            columns=results.var.index
+        )
         
-        # Convert xarray DataArray to pandas DataFrame
-        counts_df = counts_matrix.to_pandas()
-        
-        # Handle both Series and DataFrame cases
-        if isinstance(counts_df, pd.Series):
-            counts_df = counts_df.to_frame().T
-        
-        # Transpose to samples x genes format
-        counts_df = counts_df.T
-        
-        counts_df.index.name = None
-        counts_df.columns.name = None
+        # Map file paths to sample names
+        path_to_sample = {str(p): s for p, s in zip(file_paths, sample_names)}
+        counts_df.index = [path_to_sample.get(str(idx), idx) for idx in counts_df.index]
         
         counts_df = counts_df.round().astype(int)
         
