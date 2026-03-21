@@ -117,9 +117,17 @@ def main_deseq2(args):
     if args.salmon_dir and args.gene_counts:
         logger.warning("Both --salmon-dir and --gene-counts provided. Using --salmon-dir with pytximport")
     
-    # Setup output directory
-    output_dir = Path(args.output_dir)
+    # Setup work directory structure
+    workdirs = setup_workdir(args.work_dir)
+    
+    # Use default 04_deseq2 directory if output_dir not specified
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+    else:
+        output_dir = workdirs['deseq2']
+    
     output_dir.mkdir(parents=True, exist_ok=True)
+    args.output_dir = str(output_dir)
     
     # Run DESeq2 analysis
     try:
@@ -196,8 +204,10 @@ Examples:
         help="Path to transcript-to-gene mapping file (CSV/TSV with transcript_id,gene_id columns)")
     
     # Output options
-    parser_deseq2.add_argument("-o", "--output-dir", dest="output_dir", default="./deseq2_output",
-        help="Output directory for results")
+    parser_deseq2.add_argument("-w", "--work-dir", dest="work_dir", default=".",
+        help="Work directory (will create 00_index, 01_clean_data, 02_bam, 03_quant, 04_deseq2)")
+    parser_deseq2.add_argument("-o", "--output-dir", dest="output_dir", default=None,
+        help="Custom output directory for DESeq2 results (default: work_dir/04_deseq2)")
     
     # Analysis options
     parser_deseq2.add_argument("--design", default="~condition",
