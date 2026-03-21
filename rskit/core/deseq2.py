@@ -16,6 +16,59 @@ class Deseq2Analyzer:
         self.counts_df = None
         self.metadata_df = None
         
+    def _create_tx2gene_from_gtf(self, gtf_file: str) -> pd.DataFrame:
+        """Create transcript-to-gene mapping from GTF file.
+        
+        Parses GTF file locally without requiring BioMart connection.
+        
+        Args:
+            gtf_file: Path to GTF annotation file
+            
+        Returns:
+            DataFrame with transcript_id and gene_id columns
+        """
+        self.logger.info(f"Parsing GTF file: {gtf_file}")
+        
+        tx2gene_dict = {}
+        
+        with open(gtf_file, 'r') as f:
+            for line in f:
+                if line.startswith('#'):
+                    continue
+                
+                fields = line.strip().split('\t')
+                if len(fields) < 9:
+                    continue
+                
+                # Parse attributes
+                attributes = {}
+                for attr in fields[8].split(';'):
+                    attr = attr.strip()
+                    if not attr:
+                        continue
+                    # Handle both "key value" and "key "value"" formats
+                    parts = attr.split(' ', 1)
+                    if len(parts) == 2:
+                        key = parts[0].strip()
+                        value = parts[1].strip().strip('"')
+                        attributes[key] = value
+                
+                # Extract transcript_id and gene_id
+                transcript_id = attributes.get('transcript_id')
+                gene_id = attributes.get('gene_id')
+                
+                if transcript_id and gene_id and transcript_id not in tx2gene_dict:
+                    tx2gene_dict[transcript_id] = gene_id
+        
+        # Create DataFrame
+        tx2gene_df = pd.DataFrame(
+            list(tx2gene_dict.items()),
+            columns=['transcript_id', 'gene_id']
+        )
+        
+        self.logger.info(f"Created tx2gene map with {len(tx2gene_df)} transcripts")
+        return tx2gene_df
+    
     def load_counts_from_salmon(self, salmon_dir: str, coldata: pd.DataFrame, 
                                  gtf_file: Optional[str] = None,
                                  tx2gene: Optional[str] = None) -> pd.DataFrame:
@@ -32,7 +85,6 @@ class Deseq2Analyzer:
         """
         try:
             from pytximport import tximport
-            from pytximport.utils import create_transcript_gene_map
         except ImportError:
             raise ImportError("pytximport is not installed. Please install it with: pip install pytximport")
         
@@ -54,12 +106,24 @@ class Deseq2Analyzer:
         
         # Get transcript-to-gene mapping
         if tx2gene is not None:
-            tx2gene_map = pd.read_csv(tx2gene, sep='\t' if tx2gene.endswith('.tsv') else ',')
+            sep = '\t' if tx2gene.endswith('.tsv') else ','
+            tx2gene_map = pd.read_csv(tx2gene, sep=sep)
+            self.logger.info(f"Loaded tx2gene map from {tx2gene}")
         elif gtf_file is not None:
-            self.logger.info("Creating transcript-to-gene map from GTF file...")
-            tx2gene_map = create_transcript_gene_map(gene_transfer_format_path=gtf_file)
+            # Use local GTF parsing instead of BioMart
+            tx2gene_map = self._create_tx2gene_from_gtf(gtf_file)
         else:
             raise ValueError("Either gtf_file or tx2gene must be provided")
+        
+        # Ensure correct column names
+        if 'transcript_id' not in tx2gene_map.columns or 'gene_id' not in tx2gene_map.columns:
+            # Try to detect column names
+            if len(tx2gene_map.columns) >= 2:
+                tx2gene_map = tx2gene_map.iloc[:, :2]
+                tx2gene_map.columns = ['transcript_id', 'gene_id']
+                self.logger.warning("Renamed tx2gene columns to transcript_id and gene_id")
+            else:
+                raise ValueError("tx2gene map must have at least 2 columns (transcript_id, gene_id)")
         
         # Run tximport
         self.logger.info(f"Running pytximport on {len(file_paths)} samples...")
