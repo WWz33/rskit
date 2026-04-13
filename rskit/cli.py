@@ -14,7 +14,7 @@ from rskit.utils.logger import get_logger
 from rskit.utils.validators import check_and_prepare_index
 from rskit.utils.parallel import calculate_threads_per_sample, run_samples_parallel
 from rskit.core.star import StarIndexer
-from rskit.core.salmon import SalmonQuantifier
+from rskit.core.salmon import SalmonExpressionExporter, SalmonQuantifier
 
 logger = get_logger(__name__)
 
@@ -22,9 +22,9 @@ logger = get_logger(__name__)
 @dataclass
 class Deseq2Args:
     """Arguments for DESeq2 analysis"""
-    salmon_dir: str
+    salmon_dir: Optional[str]
     coldata: str
-    gtf: str
+    gtf: Optional[str]
     output_dir: str
     gene_counts: Optional[str] = None
     tx2gene: Optional[str] = None
@@ -164,6 +164,25 @@ def run_quantification(samples: Dict[str, Dict], genome_fasta: str, gtf_file: st
         )
 
 
+def export_quant_expression_tables(
+    quant_dir: Path,
+    gtf_file: Optional[str],
+    tx2gene: Optional[str] = None,
+    sample_names: Optional[List[str]] = None,
+) -> Dict[str, str]:
+    """Export gene-level expression tables from Salmon quantification output."""
+    exporter = SalmonExpressionExporter()
+    outputs = exporter.export_gene_tables(
+        salmon_dir=str(quant_dir),
+        output_dir=str(quant_dir),
+        gtf_file=gtf_file,
+        tx2gene=tx2gene,
+        sample_names=sample_names,
+    )
+    logger.info(f"Expression tables written to {quant_dir}")
+    return outputs
+
+
 def main_quant(args):
     """Run quantification pipeline"""
     # Convert paths to absolute
@@ -201,8 +220,15 @@ def main_quant(args):
     samples = prepare_samples(samples_list, workdirs, args.trim, threads_per_sample, parallel=use_parallel)
     results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
                                  index_dir, workdirs, threads_per_sample, use_parallel, args.skip_existing)
+    expression_outputs = export_quant_expression_tables(
+        quant_dir=workdirs['quant'],
+        gtf_file=gtf_file,
+        tx2gene=getattr(args, "tx2gene", None),
+        sample_names=[sample_name for sample_name, _, _ in samples_list],
+    )
     
     logger.info(f"Pipeline completed. Processed {len(results)} samples.")
+    logger.info(f"Gene-level outputs: {expression_outputs}")
 
 
 def main_deseq2(args):
@@ -294,6 +320,12 @@ def main_all(args):
     results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
                                  index_dir, workdirs, threads_per_sample, use_parallel, args.skip_existing)
     logger.info(f"Quantification completed. Processed {len(results)} samples.")
+    expression_outputs = export_quant_expression_tables(
+        quant_dir=workdirs['quant'],
+        gtf_file=gtf_file,
+        tx2gene=args.tx2gene,
+        sample_names=[sample_name for sample_name, _, _ in samples_list],
+    )
     
     # Step 2: Run DESeq2
     logger.info("="*60)
@@ -301,10 +333,11 @@ def main_all(args):
     logger.info("="*60)
     
     deseq2_args = Deseq2Args(
-        salmon_dir=str(workdirs['quant']),
+        salmon_dir=None,
         coldata=coldata_file,
-        gtf=gtf_file,
+        gtf=None,
         output_dir=str(workdirs['deseq2']),
+        gene_counts=expression_outputs["gene_counts"],
         tx2gene=args.tx2gene,
         work_dir=args.output_dir,
         design=args.design,
@@ -346,6 +379,8 @@ def main():
     parser_quant.add_argument("-gf", "--transcript-fasta", dest="transcript_fasta", required=True, help="Transcript FASTA file")
     parser_quant.add_argument("-o", "--output-dir", dest="output_dir", required=True, help="Output directory (work directory)")
     parser_quant.add_argument("-idx", "--index-dir", dest="index_dir", help="STAR index directory (default: <output_dir>/00_index)")
+    parser_quant.add_argument("-t2g", "--tx2gene", dest="tx2gene",
+        help="Path to transcript-to-gene mapping file for gene-level expression export")
     parser_quant.add_argument("-t", "--threads", type=int, default=8, help="Number of threads per sample")
     parser_quant.add_argument("-p", "--parallel", type=int, help="Total cores for parallel processing")
     parser_quant.add_argument("--trim", action="store_true", help="Trim reads with fastp")

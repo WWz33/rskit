@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import pandas as pd
 import numpy as np
 from rskit.config import DESeq2Config
+from rskit.core.salmon import SalmonExpressionExporter
 from rskit.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -11,53 +12,15 @@ class Deseq2Analyzer:
     def __init__(self, config: DESeq2Config):
         self.config = config
         self.logger = logger
+        self.expression_exporter = SalmonExpressionExporter()
         self.dds = None
         self.stats_results = None
         self.counts_df = None
         self.metadata_df = None
         
     def _create_tx2gene_from_gtf(self, gtf_file: str, output_dir: Optional[str] = None) -> pd.DataFrame:
-        """Create transcript-to-gene mapping from GTF/GFF3 file.
-        
-        Args:
-            gtf_file: Path to GTF/GFF3 annotation file
-            output_dir: If provided, save tx2gene.tsv to this directory
-            
-        Returns:
-            DataFrame with transcript_id and gene_id columns
-        """
-        from rskit.utils.gtf import open as gtf_open
-        
-        self.logger.info(f"Parsing GTF/GFF3 file: {gtf_file}")
-        
-        # Use dict to automatically deduplicate by transcript_id
-        tx2gene_map = {}
-        num_records = 0
-        
-        with open(gtf_file, 'r', encoding='utf-8', errors='ignore') as reader:
-            for rec in gtf_open(reader, 'ensembl'):
-                num_records += 1
-                if rec.feature == 'transcript' and rec.transcript_id and rec.gene_id:
-                    if rec.transcript_id not in tx2gene_map:
-                        tx2gene_map[rec.transcript_id] = rec.gene_id
-        
-        self.logger.info(f"Scanned {num_records} GTF/GFF3 lines")
-        self.logger.info(f"Extracted {len(tx2gene_map)} unique transcript-to-gene mappings")
-        
-        # Convert to DataFrame
-        tx2gene_df = pd.DataFrame(
-            [(tx, gene) for tx, gene in tx2gene_map.items()],
-            columns=['transcript_id', 'gene_id']
-        )
-        
-        # Save to file for debugging
-        if output_dir:
-            output_path = Path(output_dir)
-            output_path.mkdir(parents=True, exist_ok=True)
-            tx2gene_file = output_path / "tx2gene.tsv"
-            tx2gene_df.to_csv(tx2gene_file, sep='\t', index=False)
-            self.logger.info(f"Saved tx2gene mapping to: {tx2gene_file}")
-        
+        """Create transcript-to-gene mapping from GTF/GFF3 file."""
+        tx2gene_df = self.expression_exporter._create_tx2gene_from_gtf(gtf_file, output_dir)
         self.logger.info(f"tx2gene preview:\n{tx2gene_df.head()}")
         return tx2gene_df
     
@@ -77,97 +40,14 @@ class Deseq2Analyzer:
         Returns:
             DataFrame with gene-level counts (samples x genes)
         """
-        try:
-            from pytximport import tximport
-        except ImportError:
-            raise ImportError("pytximport is not installed. Please install it with: pip install pytximport")
-        
-        salmon_path = Path(salmon_dir)
-        
-        # Get list of quant.sf files
-        file_paths = []
-        sample_names = []
-        for sample_name in coldata.index:
-            quant_file = salmon_path / sample_name / "quant.sf"
-            if quant_file.exists():
-                file_paths.append(str(quant_file))
-                sample_names.append(sample_name)
-            else:
-                self.logger.warning(f"Quantification file not found for sample {sample_name}")
-        
-        if not file_paths:
-            raise FileNotFoundError(f"No quant.sf files found in {salmon_dir}")
-        
-        # Get transcript-to-gene mapping
-        if tx2gene is not None:
-            sep = '\t' if tx2gene.endswith('.tsv') else ','
-            tx2gene_map = pd.read_csv(tx2gene, sep=sep)
-            self.logger.info(f"Loaded tx2gene map from {tx2gene}")
-        elif gtf_file is not None:
-            # Use local GTF parsing instead of BioMart
-            tx2gene_map = self._create_tx2gene_from_gtf(gtf_file, output_dir)
-        else:
-            raise ValueError("Either gtf_file or tx2gene must be provided")
-        
-        # Ensure correct column names and save if loaded from file
-        if 'transcript_id' not in tx2gene_map.columns or 'gene_id' not in tx2gene_map.columns:
-            if len(tx2gene_map.columns) >= 2:
-                tx2gene_map = tx2gene_map.iloc[:, :2]
-                tx2gene_map.columns = ['transcript_id', 'gene_id']
-                self.logger.warning("Renamed tx2gene columns to transcript_id and gene_id")
-            else:
-                raise ValueError("tx2gene map must have at least 2 columns (transcript_id, gene_id)")
-        
-        # Save tx2gene for debugging if loaded from file (GTF path already saves)
-        if tx2gene is not None and output_dir:
-            output_path = Path(output_dir)
-            output_path.mkdir(parents=True, exist_ok=True)
-            tx2gene_file = output_path / "tx2gene.tsv"
-            tx2gene_map.to_csv(tx2gene_file, sep='\t', index=False)
-            self.logger.info(f"Saved tx2gene mapping to {tx2gene_file}")
-        
-        # Final stats before tximport
-        self.logger.info(f"Ready for tximport: {len(tx2gene_map)} transcripts, {tx2gene_map['gene_id'].nunique()} genes")
-        
-        # Run tximport
-        self.logger.info(f"Running pytximport on {len(file_paths)} samples...")
-        try:
-            results = tximport(
-                file_paths=file_paths,
-                data_type="salmon",
-                transcript_gene_map=tx2gene_map,
-                counts_from_abundance="length_scaled_tpm",
-                ignore_transcript_version=False,
-                ignore_after_bar=False,
-                output_type="anndata"
-            )
-        except AssertionError as e:
-            self.logger.error(f"pytximport failed: {e}")
-            self.logger.error(f"tx2gene map has {len(tx2gene_map)} entries")
-            # Check for duplicates in tx2gene
-            dup_count = tx2gene_map['transcript_id'].duplicated().sum()
-            self.logger.error(f"Duplicate transcript_ids in tx2gene: {dup_count}")
-            if output_dir:
-                # Save duplicate info
-                dups = tx2gene_map[tx2gene_map['transcript_id'].duplicated(keep=False)]
-                dup_file = Path(output_dir) / "tx2gene_duplicates.tsv"
-                dups.to_csv(dup_file, sep='\t', index=False)
-                self.logger.error(f"Saved duplicates to {dup_file}")
-            raise
-        
-        # Convert AnnData to DataFrame for PyDESeq2
-        # AnnData obs index is file path, need to rename to sample names
-        counts_df = pd.DataFrame(
-            results.X,
-            index=results.obs.index,
-            columns=results.var.index
+        tables = self.expression_exporter.build_gene_tables(
+            salmon_dir=salmon_dir,
+            gtf_file=gtf_file,
+            tx2gene=tx2gene,
+            output_dir=output_dir,
+            sample_names=list(coldata.index),
         )
-        
-        # Map file paths to sample names
-        path_to_sample = {str(p): s for p, s in zip(file_paths, sample_names)}
-        counts_df.index = [path_to_sample.get(str(idx), idx) for idx in counts_df.index]
-        
-        counts_df = counts_df.round().astype(int)
+        counts_df = tables["counts"].round().astype(int)
         
         self.counts_df = counts_df
         self.logger.info(f"Loaded counts for {counts_df.shape[0]} samples and {counts_df.shape[1]} genes")
@@ -671,19 +551,23 @@ def run_deseq2_cli(args):
     
     # Load counts
     if args.salmon_dir:
+        existing_counts = SalmonExpressionExporter.find_existing_gene_counts(args.salmon_dir)
+        if existing_counts is not None:
+            logger.info(f"Using precomputed gene counts from {existing_counts}")
+            counts_df = analyzer.load_counts_from_file(str(existing_counts))
+        else:
         # Load from Salmon using pytximport
-        logger.info(f"Loading counts from Salmon directory: {args.salmon_dir}")
-        counts_df = analyzer.load_counts_from_salmon(
-            salmon_dir=args.salmon_dir,
-            coldata=metadata_df,
-            gtf_file=args.gtf,
-            tx2gene=args.tx2gene,
-            output_dir=str(output_dir)
-        )
-        
-        # Save tximport-processed gene counts
-        counts_file = analyzer.save_gene_counts(str(output_dir), "gene_counts_tximport")
-        logger.info(f"Saved tximport gene counts to {counts_file}")
+            logger.info(f"Loading counts from Salmon directory: {args.salmon_dir}")
+            counts_df = analyzer.load_counts_from_salmon(
+                salmon_dir=args.salmon_dir,
+                coldata=metadata_df,
+                gtf_file=args.gtf,
+                tx2gene=args.tx2gene,
+                output_dir=str(output_dir)
+            )
+            
+            counts_file = analyzer.save_gene_counts(str(output_dir), "gene_counts")
+            logger.info(f"Saved tximport gene counts to {counts_file}")
         
     elif args.gene_counts:
         # Load from gene counts file

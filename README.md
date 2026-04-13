@@ -1,17 +1,16 @@
 # rskit - RNA-seq Analysis Toolkit
 
-A Python toolkit for RNA-seq analysis, providing command-line interface and Python API for common bioinformatics tasks including read alignment, quantification, differential expression analysis, and co-expression network analysis.
+A Python toolkit for RNA-seq analysis with a CLI and Python API for common workflows including read alignment, Salmon quantification, DESeq2 differential expression, and WGCNA.
 
 ## Features
 
-- **Quantification Pipeline**: STAR alignment + Salmon quantification
-- **Differential Expression Analysis**: DESeq2-based analysis with automatic data processing
-- **Co-expression Network Analysis**: WGCNA for gene module detection
-- **Complete Pipeline**: One command from reads to differential expression (`rskit all`)
-- **Flexible Input Formats**: Automatic detection of CSV/TSV files
-- **Unified `--coldata`**: Single sample metadata file works across all subcommands
-- **Command-line Interface**: Easy-to-use CLI for all analyses
-- **Python API**: Programmatic access for custom workflows
+- Quantification pipeline: STAR alignment + Salmon quantification
+- Gene-level expression export during `quant`
+- Differential expression analysis with DESeq2
+- Co-expression network analysis with WGCNA
+- End-to-end workflow with `rskit all`
+- Automatic CSV/TSV detection
+- Shared `--coldata` metadata format across subcommands
 
 ## Installation
 
@@ -23,20 +22,20 @@ pip install -e .
 ```
 
 ### Dependencies
+
 - Python >= 3.8
 - pandas
 - numpy
 - pydeseq2
+- pytximport
 - PyWGCNA
-- STAR (for alignment)
-- Salmon (for quantification)
-- fastp (optional, for trimming)
+- STAR
+- Salmon
+- fastp (optional)
 
 ## Quick Start
 
-### 1. Complete Pipeline (quant → deseq2)
-
-Run the complete analysis in one command:
+### 1. Complete pipeline
 
 ```bash
 rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
@@ -45,9 +44,9 @@ rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o 
 rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ --design "~batch + condition"
 ```
 
-### 2. Quantification Pipeline
+### 2. Quantification pipeline
 
-Run complete quantification from raw reads to gene counts:
+`quant` now writes per-sample Salmon output plus gene-level `gene_counts.csv`, `gene_tpm.csv`, and `gene_log2_tpm_plus1.csv` into `03_quant/`.
 
 ```bash
 # Single sample
@@ -57,34 +56,30 @@ rskit quant -s sample1 -1 sample1_R1.fq.gz -2 sample1_R2.fq.gz -g genome.fa -gtf
 rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
 ```
 
-### 3. Differential Expression Analysis
+### 3. Differential expression analysis
 
 ```bash
-# From Salmon quantification directory
+# Prefer precomputed gene counts from a quant directory
 rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf
 
-# From gene counts matrix
+# Or provide a counts matrix directly
 rskit deseq2 -gc counts.csv -S coldata.csv
 
 # Multi-factor design
 rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf --design "~batch + condition"
 ```
 
-### 4. WGCNA Co-expression Network Analysis
+### 4. WGCNA
 
 ```bash
-# Basic analysis
 rskit wgcna -e expression.csv -o ./wgcna_results
-
-# With metadata
 rskit wgcna -e expression.csv -S coldata.csv -G gene_info.csv -o ./wgcna_results
 ```
 
 ## Coldata Format
 
-All subcommands use the same `--coldata` / `-S` parameter. Use one file for your entire workflow:
+All subcommands use the same `--coldata` / `-S` parameter.
 
-**Full format** (compatible with all subcommands):
 ```csv
 sample,id,condition,r1,r2
 sample1,ctrl,control,sample1_R1.fq.gz,sample1_R2.fq.gz
@@ -94,69 +89,59 @@ sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
 ```
 
 Each subcommand reads only the columns it needs:
-- **quant**: reads `sample`, `r1`, `r2`
-- **deseq2**: reads `sample`, `id`, `condition`
-- **wgcna**: reads `sample` + any metadata columns
+
+- `quant`: `sample`, `r1`, `r2`
+- `deseq2`: `sample`, `id`, `condition`
+- `wgcna`: `sample` plus any metadata columns
 
 ## Command Reference
 
-### rskit all
+### `rskit all`
 
 Complete pipeline: quantification + DESeq2 analysis.
 
 | Option | Description |
 |--------|-------------|
-| `-S, --coldata` | Coldata file (CSV/TSV) with columns: sample,id,condition,r1,r2 (required) |
-| `-g, --genome-fasta` | Genome FASTA file (required) |
-| `-gtf, --gtf-file` | GTF annotation file (required) |
-| `-gf, --transcript-fasta` | Transcript FASTA file (required) |
-| `-o, --output-dir` | Output directory (work directory, required) |
-| `-idx, --index-dir` | STAR index directory (default: `<output_dir>/00_index`) |
+| `-S, --coldata` | Coldata file with `sample,id,condition,r1,r2` |
+| `-g, --genome-fasta` | Genome FASTA file |
+| `-gtf, --gtf-file` | GTF annotation file |
+| `-gf, --transcript-fasta` | Transcript FASTA file |
+| `-o, --output-dir` | Output directory |
+| `-idx, --index-dir` | STAR index directory |
 | `-t2g, --tx2gene` | Transcript-to-gene mapping file |
-| `-t, --threads` | Number of threads per sample (default: 8) |
-| `-p, --parallel` | Total cores for parallel processing (samples run simultaneously) |
+| `-t, --threads` | Threads per sample |
+| `-p, --parallel` | Total cores for parallel execution |
 | `--trim` | Trim reads with fastp |
-| `--force-index` | Force rebuild index |
-| `--skip-existing` | Skip samples if output already exists |
-| `--design` | Design formula (default: ~condition) |
-| `--contrast` | Contrast specification (e.g., 'condition,treatment,control') |
-| `--alpha` | Significance threshold for adjusted p-values (default: 0.05) |
-| `--lfc` | Log2 fold change threshold for significant genes (default: 2.0) |
+| `--force-index` | Force STAR index rebuild |
+| `--skip-existing` | Skip sample work when output already exists |
+| `--design` | DESeq2 design formula |
+| `--contrast` | Contrast specification |
+| `--alpha` | Adjusted p-value threshold |
+| `--lfc` | Log2 fold-change threshold |
 
-> **Note**: 
-> - If `--index-dir` is not specified, index will be stored in `<output_dir>/00_index/`
-> - If a valid STAR index exists, it will be reused automatically (use `--force-index` to rebuild)
-> - When using `--parallel`, samples are processed in parallel with `parallel_cores / num_samples` threads each
-> - Significant genes: `padj < alpha AND abs(log2FoldChange) > lfc`
+### `rskit quant`
 
-### rskit quant
-
-Complete quantification pipeline (index → align → quant).
+Complete quantification pipeline: index -> align -> quant -> gene-level table export.
 
 | Option | Description |
 |--------|-------------|
-| `-s, --sample` | Sample name (for single sample) |
-| `-S, --coldata` | Sample file (CSV/TSV) with columns: sample,r1,r2 |
+| `-s, --sample` | Sample name for single-sample mode |
+| `-S, --coldata` | Sample file with `sample,r1,r2` |
 | `-1, --r1` | First read file |
 | `-2, --r2` | Second read file |
-| `-g, --genome-fasta` | Genome FASTA file (required) |
-| `-gtf, --gtf-file` | GTF annotation file (required) |
-| `-gf, --transcript-fasta` | Transcript FASTA file (required) |
-| `-o, --output-dir` | Output directory (required) |
-| `-idx, --index-dir` | STAR index directory (default: `<output_dir>/00_index`) |
-| `-t, --threads` | Number of threads per sample (default: 8) |
-| `-p, --parallel` | Total cores for parallel processing (samples run simultaneously) |
+| `-g, --genome-fasta` | Genome FASTA file |
+| `-gtf, --gtf-file` | GTF annotation file |
+| `-gf, --transcript-fasta` | Transcript FASTA file |
+| `-o, --output-dir` | Output directory |
+| `-idx, --index-dir` | STAR index directory |
+| `-t2g, --tx2gene` | Transcript-to-gene mapping file for gene-level export |
+| `-t, --threads` | Threads per sample |
+| `-p, --parallel` | Total cores for parallel execution |
 | `--trim` | Trim reads with fastp |
-| `--force-index` | Force rebuild index |
-| `--skip-existing` | Skip samples if output already exists |
+| `--force-index` | Force STAR index rebuild |
+| `--skip-existing` | Skip sample work when output already exists |
 
-> **Note**: 
-> - If `--index-dir` is not specified, index will be stored in `<output_dir>/00_index/`
-> - If a valid STAR index exists, it will be reused automatically (use `--force-index` to rebuild)
-> - When using `--parallel` with `--coldata`, samples are processed in parallel with `parallel_cores / num_samples` threads each
-> - Default behavior: overwrite existing output. Use `--skip-existing` to skip
-
-### rskit deseq2
+### `rskit deseq2`
 
 DESeq2 differential expression analysis.
 
@@ -164,44 +149,44 @@ DESeq2 differential expression analysis.
 |--------|-------------|
 | `-sd, --salmon-dir` | Directory containing Salmon quant folders |
 | `-gc, --gene-counts` | Gene counts matrix file |
-| `-S, --coldata` | Sample metadata file (required) |
+| `-S, --coldata` | Sample metadata file |
 | `-gtf, --gtf` | GTF annotation file |
 | `-t2g, --tx2gene` | Transcript-to-gene mapping file |
-| `--design` | Design formula (default: ~condition) |
+| `--design` | Design formula |
 | `--contrast` | Contrast specification |
-| `--alpha` | Significance threshold for adjusted p-values (default: 0.05) |
-| `--lfc` | Log2 fold change threshold for significant genes (default: 2.0) |
+| `--alpha` | Adjusted p-value threshold |
+| `--lfc` | Log2 fold-change threshold |
 | `-o, --output-dir` | Output directory |
 | `-t, --threads` | Number of threads |
 
-> **Significant genes**: `padj < alpha AND abs(log2FoldChange) > lfc` (default: padj < 0.05 AND abs(log2FC) > 2)
+When `--salmon-dir` points at a `quant` output directory, `deseq2` reuses `gene_counts.csv` or `gene_counts.tsv` if present. It falls back to importing from `quant.sf` only when no precomputed gene counts are available.
 
-### rskit wgcna
+### `rskit wgcna`
 
 WGCNA co-expression network analysis.
 
 | Option | Description |
 |--------|-------------|
-| `-e, --expression` | Expression matrix file (required) |
-| `-o, --output-dir` | Output directory (required) |
+| `-e, --expression` | Expression matrix file |
+| `-o, --output-dir` | Output directory |
 | `-S, --coldata` | Sample metadata file |
 | `-G, --gene-info` | Gene metadata file |
-| `-sep, --sep` | Separator for input files (default: ,) |
-| `-n, --name` | Analysis name (default: WGCNA) |
+| `-sep, --sep` | Separator for input files |
+| `-n, --name` | Analysis name |
 | `-s, --species` | Species for enrichment analysis |
-| `-l, --level` | Data level: gene, transcript (default: gene) |
-| `-nt, --network-type` | Network type: unsigned, signed, signed hybrid (default: signed hybrid) |
-| `-tom, --tom-type` | TOM type: unsigned, signed (default: signed) |
-| `-min, --min-module-size` | Minimum module size (default: 50) |
-| `-p, --power` | Soft thresholding power (auto-detected if not specified) |
-| `-rsquared, --rsquared-cut` | R-squared cutoff (default: 0.9) |
-| `-mean, --mean-cut` | Mean connectivity cutoff (default: 100) |
-| `-mediss, --mediss-thresh` | Module merging threshold (default: 0.2) |
-| `-tpm, --tpm-cutoff` | TPM cutoff for filtering (default: 1) |
+| `-l, --level` | Data level: `gene` or `transcript` |
+| `-nt, --network-type` | Network type |
+| `-tom, --tom-type` | TOM type |
+| `-min, --min-module-size` | Minimum module size |
+| `-p, --power` | Soft thresholding power |
+| `-rsquared, --rsquared-cut` | R-squared cutoff |
+| `-mean, --mean-cut` | Mean connectivity cutoff |
+| `-mediss, --mediss-thresh` | Module merging threshold |
+| `-tpm, --tpm-cutoff` | TPM cutoff for filtering |
 
 ## Python API
 
-### Quantification Pipeline
+### Quantification
 
 ```python
 from rskit import RNAseqPipeline, PipelineConfig
@@ -212,7 +197,7 @@ pipeline = RNAseqPipeline(config)
 samples = {
     "sample1": {
         "fq1": "data/sample1_R1.fq",
-        "fq2": "data/sample1_R2.fq"
+        "fq2": "data/sample1_R2.fq",
     }
 }
 
@@ -223,39 +208,33 @@ results = pipeline.run(
     transcript_fasta="transcripts.fa",
     index_dir="STAR_index",
     output_dir="results/02_bam",
-    quant_output_dir="results/03_quant"
+    quant_output_dir="results/03_quant",
 )
 ```
 
-### DESeq2 Analysis
+### DESeq2
 
 ```python
 from rskit.core.deseq2 import Deseq2Analyzer
 from rskit.config import DESeq2Config
 
-config = DESeq2Config(
-    alpha=0.05,           # padj threshold
-    lfc_threshold=2.0     # abs(log2FoldChange) threshold
-)
+config = DESeq2Config(alpha=0.05, lfc_threshold=2.0)
 analyzer = Deseq2Analyzer(config)
 
-# Load data
 counts_df = analyzer.load_counts_from_file("counts.csv")
 metadata_df = analyzer.load_metadata("coldata.csv")
 
-# Run analysis
 results_df = analyzer.analyze(
     counts_df=counts_df,
     metadata_df=metadata_df,
-    contrast=["condition", "treatment", "control"]
+    contrast=["condition", "treatment", "control"],
 )
 
-# Get summary (significant genes: padj < 0.05 AND abs(log2FC) > 2)
 summary = analyzer.get_summary()
 print(f"Significant genes: {summary['significant_genes']}")
 ```
 
-### WGCNA Analysis
+### WGCNA
 
 ```python
 from rskit.core.wgcna import WGCNAAnalyzer
@@ -264,71 +243,65 @@ analyzer = WGCNAAnalyzer(
     output_dir="./wgcna_results",
     name="MyWGCNA",
     network_type="signed hybrid",
-    min_module_size=50
+    min_module_size=50,
 )
 
-# Load data
 analyzer.load_data(
     expression_file="expression.csv",
     coldata="coldata.csv",
-    gene_info_file="gene_info.csv"
+    gene_info_file="gene_info.csv",
 )
 
-# Run analysis
 wgcna_obj = analyzer.run_analysis()
-
-# Save results
 analyzer.save_results()
 ```
 
 ## Output Structure
 
-### Complete Pipeline Output (rskit all)
-```
-results/                 # -o 指定的输出目录
-├── 00_index/            # STAR index (自动创建)
-├── 01_clean_data/       # Trimmed reads (if --trim)
-├── 02_bam/              # Aligned BAM files
-├── 03_quant/            # Salmon quantification
-└── 04_deseq2/           # DESeq2 results
+### Quant output
+
+```text
+03_quant/
+├── <sample>/quant.sf
+├── gene_counts.csv
+├── gene_tpm.csv
+├── gene_log2_tpm_plus1.csv
+└── tx2gene.tsv
 ```
 
-### DESeq2 Output
+### Complete pipeline output
+
+```text
+results/
+├── 00_index/
+├── 01_clean_data/
+├── 02_bam/
+├── 03_quant/
+└── 04_deseq2/
 ```
+
+### DESeq2 output
+
+```text
 04_deseq2/
-├── deseq2_results.csv      # Differential expression results
-├── normalized_counts.csv   # Normalized counts
-├── pca_plot.pdf           # PCA visualization
-├── volcano_plot.pdf       # Volcano plot
-└── ma_plot.pdf            # MA plot
+├── deseq2_results.csv
+├── gene_counts.csv
+├── pca_plot.pdf
+├── volcano_plot.pdf
+└── ma_plot.pdf
 ```
 
-### WGCNA Output
-```
+### WGCNA output
+
+```text
 wgcna_results/
-├── figures/              # All generated figures
-├── WGCNA.p              # Pickled WGCNA object
-└── module_info.csv       # Module membership
+├── figures/
+├── WGCNA.p
+└── module_info.csv
 ```
 
 ## File Format Notes
 
-- **Automatic separator detection**: All subcommands automatically detect CSV (comma-separated) and TSV (tab-separated) files based on file extension
-- **Gene expression matrix**: Rows = samples, Columns = genes
-- **Gene metadata**: First column should contain gene identifiers matching the expression matrix columns
-
-## Citation
-
-If you use rskit in your research, please cite:
-
-```
-[Your citation here]
-```
-
-## License
-
-[Your license here]
-
-## Contact
-
-[Your contact information here]
+- CSV/TSV separators are detected from file extension
+- Gene expression matrices are stored as rows = samples, columns = genes
+- Gene metadata should use the first column as the gene identifier
