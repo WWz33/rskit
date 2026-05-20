@@ -15,6 +15,36 @@ from rskit.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+def parse_contrast(contrast_value: Optional[str], metadata_df: pd.DataFrame) -> Optional[List[str]]:
+    """Parse and validate a DESeq2 contrast against sample metadata."""
+    if not contrast_value:
+        return None
+
+    contrast = [part.strip() for part in contrast_value.split(",")]
+    if len(contrast) != 3 or any(not part for part in contrast):
+        raise ValueError("Contrast must be in format: factor,level1,level2 (e.g., condition,B,A)")
+
+    factor, level1, level2 = contrast
+    if factor not in metadata_df.columns:
+        raise ValueError(
+            f"Contrast factor '{factor}' is not present in coldata columns: "
+            + ", ".join(metadata_df.columns)
+        )
+
+    levels = sorted(str(level) for level in metadata_df[factor].dropna().unique())
+    missing_levels = [level for level in (level1, level2) if level not in levels]
+    if missing_levels:
+        raise ValueError(
+            f"Contrast levels not found in coldata column '{factor}': "
+            + ", ".join(missing_levels)
+            + ". Available levels: "
+            + ", ".join(levels)
+        )
+
+    return contrast
+
+
 class Deseq2Analyzer:
     def __init__(self, config: DESeq2Config):
         self.config = config
@@ -538,6 +568,7 @@ def run_deseq2_cli(args):
     # Load metadata (coldata)
     logger.info(f"Loading metadata from {args.coldata}")
     metadata_df = analyzer.load_metadata(args.coldata, required_columns=design_columns(args.design))
+    contrast = parse_contrast(args.contrast, metadata_df)
     
     # Load counts
     if args.salmon_dir:
@@ -564,13 +595,6 @@ def run_deseq2_cli(args):
         raise ValueError("Either --salmon-dir or --gene-counts must be provided")
 
     counts_df = analyzer.load_counts_from_file(counts_file, metadata_df=metadata_df)
-    
-    # Parse contrast if provided
-    contrast = None
-    if args.contrast:
-        contrast = args.contrast.split(',')
-        if len(contrast) != 3:
-            raise ValueError("Contrast must be in format: factor,level1,level2 (e.g., condition,B,A)")
     
     # Run analysis
     logger.info("Running DESeq2 analysis...")

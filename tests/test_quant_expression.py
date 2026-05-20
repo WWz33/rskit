@@ -10,7 +10,7 @@ from unittest import mock
 import pandas as pd
 
 from rskit import cli
-from rskit.core.deseq2 import run_deseq2_cli
+from rskit.core.deseq2 import parse_contrast, run_deseq2_cli
 from rskit.core.salmon import SalmonExpressionExporter
 
 
@@ -250,6 +250,98 @@ class QuantExpressionTests(unittest.TestCase):
         self.assertEqual(load_counts_from_file.call_args.args[0], str(exported_counts))
         self.assertEqual(list(load_counts_from_file.call_args.kwargs["metadata_df"].index), ["sample1", "sample2"])
         load_counts_from_salmon.assert_not_called()
+
+    def test_parse_contrast_validates_factor_and_levels(self) -> None:
+        metadata = pd.DataFrame({"condition": ["A", "B"]}, index=["sample1", "sample2"])
+
+        self.assertIsNone(parse_contrast(None, metadata))
+        self.assertEqual(parse_contrast("condition,B,A", metadata), ["condition", "B", "A"])
+
+        with self.assertRaisesRegex(ValueError, "factor 'batch'"):
+            parse_contrast("batch,B,A", metadata)
+        with self.assertRaisesRegex(ValueError, "Available levels: A, B"):
+            parse_contrast("condition,C,A", metadata)
+        with self.assertRaisesRegex(ValueError, "factor,level1,level2"):
+            parse_contrast("condition,B", metadata)
+
+    def test_run_deseq2_cli_validates_contrast_before_loading_counts(self) -> None:
+        counts_path = self.root / "counts.csv"
+        pd.DataFrame({"geneA": [10, 12]}, index=["sample1", "sample2"]).to_csv(counts_path)
+        coldata_path = self.root / "coldata.csv"
+        coldata_path.write_text(
+            "sample,condition\n"
+            "sample1,A\n"
+            "sample2,B\n",
+            encoding="utf-8",
+        )
+        args = argparse.Namespace(
+            salmon_dir=None,
+            gene_counts=str(counts_path),
+            coldata=str(coldata_path),
+            gtf=None,
+            tx2gene=None,
+            output_dir=str(self.root / "04_deseq2"),
+            design="~condition",
+            alpha=0.05,
+            lfc_threshold=2.0,
+            threads=None,
+            contrast="condition,C,A",
+        )
+
+        with mock.patch("rskit.core.deseq2.Deseq2Analyzer.load_counts_from_file") as load_counts:
+            with self.assertRaisesRegex(ValueError, "Available levels: A, B"):
+                run_deseq2_cli(args)
+
+        load_counts.assert_not_called()
+
+    def test_run_deseq2_cli_passes_validated_contrast_to_analysis(self) -> None:
+        counts_path = self.root / "counts.csv"
+        pd.DataFrame({"geneA": [10, 12]}, index=["sample1", "sample2"]).to_csv(counts_path)
+        coldata_path = self.root / "coldata.csv"
+        coldata_path.write_text(
+            "sample,condition\n"
+            "sample1,A\n"
+            "sample2,B\n",
+            encoding="utf-8",
+        )
+        args = argparse.Namespace(
+            salmon_dir=None,
+            gene_counts=str(counts_path),
+            coldata=str(coldata_path),
+            gtf=None,
+            tx2gene=None,
+            output_dir=str(self.root / "04_deseq2"),
+            design="~condition",
+            alpha=0.05,
+            lfc_threshold=2.0,
+            threads=None,
+            contrast="condition,B,A",
+        )
+        fake_results = pd.DataFrame(
+            {
+                "baseMean": [1.0],
+                "log2FoldChange": [0.5],
+                "pvalue": [0.1],
+                "padj": [0.2],
+            },
+            index=["geneA"],
+        )
+
+        with mock.patch("rskit.core.deseq2.Deseq2Analyzer.load_counts_from_file", return_value=pd.DataFrame({"geneA": [10, 12]}, index=["sample1", "sample2"])), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.analyze", return_value=fake_results) as analyze, \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.save_results", return_value={}), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_volcano"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_pca"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.get_summary", return_value={
+                 "total_genes": 1,
+                 "significant_genes": 0,
+                 "upregulated_genes": 0,
+                 "downregulated_genes": 0,
+                 "alpha": 0.05,
+             }):
+            run_deseq2_cli(args)
+
+        analyze.assert_called_once_with(contrast=["condition", "B", "A"])
 
     def test_main_all_passes_quant_gene_counts_into_deseq(self) -> None:
         coldata_path = self.root / "coldata.csv"

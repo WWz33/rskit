@@ -190,6 +190,8 @@ DESeq2 differential expression analysis.
 
 When `--salmon-dir` points at a `quant` output directory, `deseq2` reuses `gene_counts.csv` or `gene_counts.tsv` if present. It falls back to importing from `quant.sf` only when no precomputed gene counts are available. Metadata sample IDs and count matrix sample IDs must match exactly.
 
+`--contrast` must use `factor,level1,level2`. The factor must be a coldata column, and both levels must exist in that column; rskit validates this before loading counts or running DESeq2.
+
 ### `rskit validate` / `rskit doctor`
 
 Validate input files without running analysis tools.

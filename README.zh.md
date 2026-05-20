@@ -190,6 +190,8 @@ DESeq2 差异表达分析。
 
 当 `--salmon-dir` 指向 `quant` 输出目录时，`deseq2` 会优先复用已有的 `gene_counts.csv` 或 `gene_counts.tsv`。只有不存在预计算 gene counts 时，才会从 `quant.sf` 重新导入。Metadata sample IDs 和 count matrix sample IDs 必须完全匹配。
 
+`--contrast` 必须使用 `factor,level1,level2` 格式。factor 必须是 coldata 中的列，两个 level 也必须真实存在于该列；rskit 会在加载 counts 或运行 DESeq2 之前完成校验。
+
 ### `rskit validate` / `rskit doctor`
 
 不运行分析工具，只校验输入文件。
