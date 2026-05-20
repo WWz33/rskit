@@ -25,7 +25,6 @@ class SalmonConfig:
     seq_bias: bool = True
     gc_bias: bool = True
     pos_bias: bool = True
-    validate_mappings: bool = False
 
 @dataclass
 class DESeq2Config:

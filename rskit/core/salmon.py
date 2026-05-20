@@ -41,8 +41,6 @@ class SalmonQuantifier:
             cmd.append("--gcBias")
         if self.config.pos_bias:
             cmd.append("--posBias")
-        if self.config.validate_mappings:
-            cmd.append("--validateMappings")
         
         self.logger.info(f"Quantifying {sample_name or 'sample'} with Salmon")
         self.tool._run_command(cmd)
