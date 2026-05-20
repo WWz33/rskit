@@ -544,7 +544,7 @@ def run_deseq2_cli(args):
         existing_counts = SalmonExpressionExporter.find_existing_gene_counts(args.salmon_dir)
         if existing_counts is not None:
             logger.info(f"Using precomputed gene counts from {existing_counts}")
-            counts_df = analyzer.load_counts_from_file(str(existing_counts), metadata_df=metadata_df)
+            counts_file = str(existing_counts)
         else:
             logger.info(f"Exporting gene-level quantification tables before DESeq2: {args.salmon_dir}")
             expression_outputs = SalmonExpressionExporter().export_gene_tables(
@@ -554,14 +554,16 @@ def run_deseq2_cli(args):
                 tx2gene=args.tx2gene,
                 sample_names=list(metadata_df.index),
             )
-            counts_df = analyzer.load_counts_from_file(expression_outputs["gene_counts"], metadata_df=metadata_df)
+            counts_file = expression_outputs["gene_counts"]
         
     elif args.gene_counts:
         # Load from gene counts file
         logger.info(f"Loading gene counts from {args.gene_counts}")
-        counts_df = analyzer.load_counts_from_file(args.gene_counts, metadata_df=metadata_df)
+        counts_file = args.gene_counts
     else:
         raise ValueError("Either --salmon-dir or --gene-counts must be provided")
+
+    counts_df = analyzer.load_counts_from_file(counts_file, metadata_df=metadata_df)
     
     # Parse contrast if provided
     contrast = None
