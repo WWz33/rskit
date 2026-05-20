@@ -25,6 +25,7 @@ attr_format: setting the attribute format to 'ensembl' will use a simplified, an
 """
 
 import re
+from pathlib import Path
 
 re_attrs = re.compile(r'(\w+)(?:\s*=\s*|\s+)(?:"(.*?)"|(.*?));\s*')
 id_keys = [
@@ -43,12 +44,16 @@ id_keys = [
 #  - optional whitespace
 
 
-def open(reader, attr_format=None, keep_line=False, append_versions=False):
+def iter_records(reader, attr_format=None, keep_line=False, append_versions=False):
     # strip only line terminators; by default, rstrip() will remove trailing tabs
     lines = (line.rstrip('\r\n') for line in reader if not line[0] == '#')
     for line in lines:
         rec = parse_line(line, attr_format, append_versions)
         yield (rec, line) if keep_line else rec
+
+
+def open(reader, attr_format=None, keep_line=False, append_versions=False):
+    return iter_records(reader, attr_format, keep_line, append_versions)
 
 
 def parse_line(line, attr_format=None, append_versions=False):
@@ -121,10 +126,10 @@ def gtf_tx2gene(args):
     num_records = 0
     num_written = 0
 
-    with open(args.output, 'w') as writer:
+    with Path(args.output).open('w') as writer:
         writer.write('transcript_id,gene_id\n')
-        with open(args.input, 'r') as reader:
-            for rec in gtf.open(reader, 'ensembl'):
+        with Path(args.input).open('r') as reader:
+            for rec in iter_records(reader, 'ensembl'):
                 num_records += 1
 
                 if rec.feature == 'transcript':
