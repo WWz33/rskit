@@ -16,6 +16,14 @@ def read_table(path: str, sep: Optional[str] = None, index_col=None) -> pd.DataF
     return pd.read_csv(path, sep=detect_separator(path, sep), index_col=index_col)
 
 
+def resolve_path_from_table(path_value: str, table_path: str) -> Path:
+    """Resolve a path value relative to the table that contains it."""
+    path = Path(path_value)
+    if path.is_absolute():
+        return path
+    return (Path(table_path).resolve().parent / path).resolve()
+
+
 def load_coldata(path: str, required_columns: Sequence[str] = ()) -> pd.DataFrame:
     """Load sample metadata with a required sample identifier column."""
     metadata = read_table(path)

@@ -55,6 +55,31 @@ class QuantExpressionTests(unittest.TestCase):
         )
         return gtf_path
 
+    def test_parse_samples_from_coldata_accepts_tsv_contract(self) -> None:
+        coldata_path = self.root / "coldata.tsv"
+        coldata_path.write_text(
+            "sample\tcondition\tr1\tr2\n"
+            "sample1\tA\tsample1_R1.fq.gz\tsample1_R2.fq.gz\n",
+            encoding="utf-8",
+        )
+
+        samples = cli.parse_samples_from_coldata(str(coldata_path))
+
+        self.assertEqual(samples[0][0], "sample1")
+        self.assertEqual(samples[0][1], (self.root / "sample1_R1.fq.gz").resolve())
+        self.assertEqual(samples[0][2], (self.root / "sample1_R2.fq.gz").resolve())
+
+    def test_parse_samples_from_coldata_requires_sample_column(self) -> None:
+        coldata_path = self.root / "coldata.csv"
+        coldata_path.write_text(
+            "id,r1,r2\n"
+            "sample1,sample1_R1.fq.gz,sample1_R2.fq.gz\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "sample"):
+            cli.parse_samples_from_coldata(str(coldata_path))
+
     def test_exporter_writes_gene_expression_tables(self) -> None:
         self._write_quant_stub("sample1")
         self._write_quant_stub("sample2")

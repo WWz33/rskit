@@ -8,6 +8,7 @@ from rskit.input_contracts import (
     detect_separator,
     load_coldata,
     read_table,
+    resolve_path_from_table,
     validate_sample_alignment,
 )
 
@@ -27,6 +28,15 @@ class InputContractTests(unittest.TestCase):
             table = read_table(str(table_path))
 
         self.assertEqual(table.to_dict("records"), [{"sample": "s1", "condition": "A"}])
+
+    def test_resolve_path_from_table_uses_table_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            table_path = Path(tempdir) / "metadata" / "coldata.csv"
+            table_path.parent.mkdir()
+
+            resolved = resolve_path_from_table("reads/sample_R1.fq.gz", str(table_path))
+
+        self.assertEqual(resolved, (table_path.parent / "reads" / "sample_R1.fq.gz").resolve())
 
     def test_load_coldata_requires_sample_column_and_requested_columns(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

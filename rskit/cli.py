@@ -1,11 +1,11 @@
 import argparse
 import sys
 import os
-import pandas as pd
 import subprocess
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Tuple
+from rskit.input_contracts import load_coldata, resolve_path_from_table
 from rskit.config import StarConfig, SalmonConfig, PipelineConfig, DESeq2Config
 from rskit.core.pipeline import RNAseqPipeline
 from rskit.core.deseq2 import Deseq2Analyzer, run_deseq2_cli
@@ -78,13 +78,9 @@ def trim_reads(read1: Path, read2: Path, sample: str, workdirs: Dict[str, Path],
 
 def parse_samples_from_coldata(coldata: str):
     """Parse samples from coldata file"""
-    sep = '\t' if coldata.endswith('.tsv') else ','
-    samples_df = pd.read_csv(coldata, sep=sep)
-    required_cols = {'sample', 'r1', 'r2'}
-    if not required_cols.issubset(samples_df.columns):
-        raise ValueError(f"Coldata file must contain columns: {required_cols}")
-    return [(row['sample'], Path(row['r1']).resolve(), Path(row['r2']).resolve()) 
-            for _, row in samples_df.iterrows()]
+    samples_df = load_coldata(coldata, required_columns=["r1", "r2"])
+    return [(sample_name, resolve_path_from_table(row['r1'], coldata), resolve_path_from_table(row['r2'], coldata))
+            for sample_name, row in samples_df.iterrows()]
 
 
 def trim_sample_wrapper(args):
