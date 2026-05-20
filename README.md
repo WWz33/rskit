@@ -1,5 +1,11 @@
 # rskit - RNA-seq Analysis Toolkit
 
+<!-- README-I18N:START -->
+
+**English** | [中文](./README.zh.md)
+
+<!-- README-I18N:END -->
+
 A Python toolkit for RNA-seq analysis with a CLI and Python API for common workflows including read alignment, Salmon quantification, DESeq2 differential expression, and WGCNA.
 
 ## Features
@@ -11,12 +17,14 @@ A Python toolkit for RNA-seq analysis with a CLI and Python API for common workf
 - End-to-end workflow with `rskit all`
 - Automatic CSV/TSV detection
 - Shared `--coldata` metadata format across subcommands
+- Early `tx2gene.tsv` and gene-level matrix export before DESeq2
+- Strict sample ID validation between metadata and count/expression matrices
 
 ## Installation
 
 ### Install from source
 ```bash
-git clone https://github.com/your-repo/rskit.git
+git clone https://github.com/WWz33/rskit.git
 cd rskit
 pip install -e .
 ```
@@ -46,7 +54,7 @@ rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o 
 
 ### 2. Quantification pipeline
 
-`quant` now writes per-sample Salmon output plus gene-level `gene_counts.csv`, `gene_tpm.csv`, and `gene_log2_tpm_plus1.csv` into `03_quant/`.
+`quant` writes per-sample Salmon output plus `tx2gene.tsv`, `gene_counts.csv`, `gene_tpm.csv`, and `gene_log2_tpm_plus1.csv` into `03_quant/`. The transcript-to-gene map is created during quantification, before DESeq2 needs gene-level counts.
 
 ```bash
 # Single sample
@@ -91,8 +99,10 @@ sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
 Each subcommand reads only the columns it needs:
 
 - `quant`: `sample`, `r1`, `r2`
-- `deseq2`: `sample`, `id`, `condition`
+- `deseq2`: `sample` plus every metadata column referenced by `--design`; the default `~condition` requires `condition`
 - `wgcna`: `sample` plus any metadata columns
+
+Relative `r1` and `r2` paths are resolved relative to the coldata file. Count and expression matrices are expected as rows = samples and columns = genes. If a DESeq2 counts file is genes x samples, it is transposed only when the sample IDs match the coldata columns. After orientation, sample IDs must match coldata exactly; rskit does not silently drop or intersect samples.
 
 ## Command Reference
 
@@ -108,7 +118,7 @@ Complete pipeline: quantification + DESeq2 analysis.
 | `-gf, --transcript-fasta` | Transcript FASTA file |
 | `-o, --output-dir` | Output directory |
 | `-idx, --index-dir` | STAR index directory |
-| `-t2g, --tx2gene` | Transcript-to-gene mapping file |
+| `-t2g, --tx2gene` | Existing transcript-to-gene mapping file; otherwise `tx2gene.tsv` is created from `--gtf-file` during quantification |
 | `-t, --threads` | Threads per sample |
 | `-p, --parallel` | Total cores for parallel execution |
 | `--trim` | Trim reads with fastp |
@@ -134,7 +144,7 @@ Complete quantification pipeline: index -> align -> quant -> gene-level table ex
 | `-gf, --transcript-fasta` | Transcript FASTA file |
 | `-o, --output-dir` | Output directory |
 | `-idx, --index-dir` | STAR index directory |
-| `-t2g, --tx2gene` | Transcript-to-gene mapping file for gene-level export |
+| `-t2g, --tx2gene` | Existing transcript-to-gene mapping file for gene-level export; otherwise `tx2gene.tsv` is created from `--gtf-file` |
 | `-t, --threads` | Threads per sample |
 | `-p, --parallel` | Total cores for parallel execution |
 | `--trim` | Trim reads with fastp |
@@ -149,7 +159,7 @@ DESeq2 differential expression analysis.
 |--------|-------------|
 | `-sd, --salmon-dir` | Directory containing Salmon quant folders |
 | `-gc, --gene-counts` | Gene counts matrix file |
-| `-S, --coldata` | Sample metadata file |
+| `-S, --coldata` | Sample metadata file with `sample` and all columns referenced by `--design` |
 | `-gtf, --gtf` | GTF annotation file |
 | `-t2g, --tx2gene` | Transcript-to-gene mapping file |
 | `--design` | Design formula |
@@ -159,7 +169,7 @@ DESeq2 differential expression analysis.
 | `-o, --output-dir` | Output directory |
 | `-t, --threads` | Number of threads |
 
-When `--salmon-dir` points at a `quant` output directory, `deseq2` reuses `gene_counts.csv` or `gene_counts.tsv` if present. It falls back to importing from `quant.sf` only when no precomputed gene counts are available.
+When `--salmon-dir` points at a `quant` output directory, `deseq2` reuses `gene_counts.csv` or `gene_counts.tsv` if present. It falls back to importing from `quant.sf` only when no precomputed gene counts are available. Metadata sample IDs and count matrix sample IDs must match exactly.
 
 ### `rskit wgcna`
 
@@ -221,8 +231,8 @@ from rskit.config import DESeq2Config
 config = DESeq2Config(alpha=0.05, lfc_threshold=2.0)
 analyzer = Deseq2Analyzer(config)
 
-counts_df = analyzer.load_counts_from_file("counts.csv")
-metadata_df = analyzer.load_metadata("coldata.csv")
+metadata_df = analyzer.load_metadata("coldata.csv", required_columns=["condition"])
+counts_df = analyzer.load_counts_from_file("counts.csv", metadata_df=metadata_df)
 
 results_df = analyzer.analyze(
     counts_df=counts_df,
@@ -304,4 +314,7 @@ wgcna_results/
 
 - CSV/TSV separators are detected from file extension
 - Gene expression matrices are stored as rows = samples, columns = genes
+- DESeq2 count matrices may be provided as genes x samples only when coldata sample IDs identify the count columns
+- DESeq2 metadata must contain `sample` plus every column referenced by `--design`
+- Matrix sample IDs must match coldata sample IDs exactly
 - Gene metadata should use the first column as the gene identifier
