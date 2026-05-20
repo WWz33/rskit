@@ -45,6 +45,42 @@ class WGCNAAnalyzerTests(unittest.TestCase):
         self.assertEqual(list(passed_gene_expr.index), ["sample1", "sample2"])
         self.assertEqual(list(passed_sample_info.index), ["sample1", "sample2"])
 
+    def test_load_data_auto_detects_tsv_inputs(self) -> None:
+        expression = self.root / "expression.tsv"
+        pd.DataFrame(
+            {"geneA": [1.0, 2.0], "geneB": [3.0, 4.0]},
+            index=pd.Index(["sample1", "sample2"], name="sample"),
+        ).to_csv(expression, sep="\t")
+        coldata = self.root / "coldata.tsv"
+        pd.DataFrame(
+            {"condition": ["control", "treated"]},
+            index=pd.Index(["sample1", "sample2"], name="sample"),
+        ).to_csv(coldata, sep="\t")
+        gene_info = self.root / "gene_info.tsv"
+        pd.DataFrame(
+            {"symbol": ["A", "B"]},
+            index=pd.Index(["geneA", "geneB"], name="gene"),
+        ).to_csv(gene_info, sep="\t")
+
+        fake_wgcna = mock.Mock(return_value="wgcna-object")
+        fake_module = types.SimpleNamespace(WGCNA=fake_wgcna)
+
+        with mock.patch.dict(sys.modules, {"PyWGCNA": fake_module}):
+            analyzer = WGCNAAnalyzer(output_dir=str(self.root / "out"))
+            result = analyzer.load_data(
+                str(expression),
+                coldata=str(coldata),
+                gene_info_file=str(gene_info),
+            )
+
+        self.assertEqual(result, "wgcna-object")
+        passed_gene_expr = fake_wgcna.call_args.kwargs["geneExp"]
+        passed_sample_info = fake_wgcna.call_args.kwargs["sampleInfo"]
+        passed_gene_info = fake_wgcna.call_args.kwargs["geneInfo"]
+        self.assertEqual(list(passed_gene_expr.columns), ["geneA", "geneB"])
+        self.assertEqual(list(passed_sample_info.columns), ["condition"])
+        self.assertEqual(list(passed_gene_info.index), ["geneA", "geneB"])
+
     def test_load_data_rejects_transposed_expression_matrix(self) -> None:
         expression = self.root / "expression.csv"
         pd.DataFrame(

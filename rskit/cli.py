@@ -460,8 +460,8 @@ Examples:
         help="Path to sample metadata file (CSV/TSV)")
     parser_wgcna.add_argument("-G", "--gene-info", dest="gene_info",
         help="Path to gene metadata file (CSV/TSV)")
-    parser_wgcna.add_argument("-sep", "--sep", default=",",
-        help="Separator for input files (comma or tab)")
+    parser_wgcna.add_argument("-sep", "--sep", default=None,
+        help="Override separator for input files")
     parser_wgcna.add_argument("-n", "--name", default="WGCNA",
         help="Name for the WGCNA analysis")
     parser_wgcna.add_argument("-s", "--species", 

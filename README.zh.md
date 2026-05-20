@@ -204,7 +204,7 @@ WGCNA 共表达网络分析。
 | `-o, --output-dir` | 输出目录 |
 | `-S, --coldata` | Sample metadata 文件 |
 | `-G, --gene-info` | Gene metadata 文件 |
-| `-sep, --sep` | 输入文件分隔符 |
+| `-sep, --sep` | 覆盖输入文件分隔符；默认按 CSV/TSV 扩展名自动识别 |
 | `-n, --name` | 分析名称 |
 | `-s, --species` | 用于 enrichment analysis 的物种 |
 | `-l, --level` | 数据层级：`gene` 或 `transcript` |

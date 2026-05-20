@@ -204,7 +204,7 @@ WGCNA co-expression network analysis.
 | `-o, --output-dir` | Output directory |
 | `-S, --coldata` | Sample metadata file |
 | `-G, --gene-info` | Gene metadata file |
-| `-sep, --sep` | Separator for input files |
+| `-sep, --sep` | Override separator for input files; CSV/TSV is auto-detected by default |
 | `-n, --name` | Analysis name |
 | `-s, --species` | Species for enrichment analysis |
 | `-l, --level` | Data level: `gene` or `transcript` |

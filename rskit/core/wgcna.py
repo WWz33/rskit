@@ -1,8 +1,6 @@
-import os
 import sys
-import pandas as pd
-import numpy as np
 from pathlib import Path
+from rskit.input_contracts import load_coldata, read_table, validate_sample_alignment
 from rskit.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -28,34 +26,25 @@ class WGCNAAnalyzer:
         self.level = level
         self.wgcna_obj = None
         
-    def load_data(self, expression_file, coldata=None, gene_info_file=None, sep=','):
+    def load_data(self, expression_file, coldata=None, gene_info_file=None, sep=None):
         """Load expression data and metadata"""
         logger.info(f"Loading expression data from {expression_file}")
         
         # Load expression data
-        if sep == ',':
-            gene_expr = pd.read_csv(expression_file, index_col=0)
-        else:
-            gene_expr = pd.read_csv(expression_file, sep=sep, index_col=0)
+        gene_expr = read_table(expression_file, sep=sep, index_col=0)
             
         # Load sample metadata if provided
         sample_info = None
         if coldata:
             logger.info(f"Loading sample metadata from {coldata}")
-            if coldata.endswith('.csv'):
-                sample_info = pd.read_csv(coldata, index_col=0)
-            else:
-                sample_info = pd.read_csv(coldata, sep='\t', index_col=0)
+            sample_info = load_coldata(coldata)
             self._validate_expression_sample_orientation(gene_expr, sample_info)
                 
         # Load gene metadata if provided
         gene_info = None
         if gene_info_file:
             logger.info(f"Loading gene metadata from {gene_info_file}")
-            if gene_info_file.endswith('.csv'):
-                gene_info = pd.read_csv(gene_info_file, index_col=0)
-            else:
-                gene_info = pd.read_csv(gene_info_file, sep='\t', index_col=0)
+            gene_info = read_table(gene_info_file, sep=sep, index_col=0)
                 
         try:
             import PyWGCNA
@@ -98,14 +87,7 @@ class WGCNAAnalyzer:
                 "expression columns, but PyWGCNA expects samples as rows and genes as columns."
             )
 
-        missing_samples = sorted(sample_ids - expression_rows)
-        if missing_samples:
-            preview = ", ".join(missing_samples[:5])
-            suffix = "..." if len(missing_samples) > 5 else ""
-            raise ValueError(
-                "Sample metadata IDs are missing from expression matrix rows: "
-                f"{preview}{suffix}"
-            )
+        validate_sample_alignment(gene_expr, sample_info, table_name="expression matrix")
         
     def run_analysis(self, show=False):
         """Run the complete WGCNA analysis pipeline"""
