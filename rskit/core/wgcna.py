@@ -30,12 +30,6 @@ class WGCNAAnalyzer:
         
     def load_data(self, expression_file, coldata=None, gene_info_file=None, sep=','):
         """Load expression data and metadata"""
-        try:
-            import PyWGCNA
-        except ImportError:
-            logger.error("PyWGCNA is not installed. Please install it with: pip install PyWGCNA")
-            sys.exit(1)
-            
         logger.info(f"Loading expression data from {expression_file}")
         
         # Load expression data
@@ -52,6 +46,7 @@ class WGCNAAnalyzer:
                 sample_info = pd.read_csv(coldata, index_col=0)
             else:
                 sample_info = pd.read_csv(coldata, sep='\t', index_col=0)
+            self._validate_expression_sample_orientation(gene_expr, sample_info)
                 
         # Load gene metadata if provided
         gene_info = None
@@ -62,6 +57,12 @@ class WGCNAAnalyzer:
             else:
                 gene_info = pd.read_csv(gene_info_file, sep='\t', index_col=0)
                 
+        try:
+            import PyWGCNA
+        except ImportError:
+            logger.error("PyWGCNA is not installed. Please install it with: pip install PyWGCNA")
+            sys.exit(1)
+            
         # Create PyWGCNA object
         self.wgcna_obj = PyWGCNA.WGCNA(
             name=self.name,
@@ -83,6 +84,28 @@ class WGCNAAnalyzer:
         
         logger.info("Data loaded successfully")
         return self.wgcna_obj
+
+    @staticmethod
+    def _validate_expression_sample_orientation(gene_expr, sample_info):
+        """Validate PyWGCNA expression matrix sample orientation."""
+        sample_ids = {str(sample_id) for sample_id in sample_info.index}
+        expression_rows = {str(sample_id) for sample_id in gene_expr.index}
+        expression_columns = {str(column) for column in gene_expr.columns}
+
+        if sample_ids.issubset(expression_columns) and not sample_ids.issubset(expression_rows):
+            raise ValueError(
+                "WGCNA expression matrix appears transposed: sample metadata IDs match "
+                "expression columns, but PyWGCNA expects samples as rows and genes as columns."
+            )
+
+        missing_samples = sorted(sample_ids - expression_rows)
+        if missing_samples:
+            preview = ", ".join(missing_samples[:5])
+            suffix = "..." if len(missing_samples) > 5 else ""
+            raise ValueError(
+                "Sample metadata IDs are missing from expression matrix rows: "
+                f"{preview}{suffix}"
+            )
         
     def run_analysis(self, show=False):
         """Run the complete WGCNA analysis pipeline"""
