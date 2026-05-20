@@ -155,6 +155,73 @@ class QuantExpressionTests(unittest.TestCase):
         load_counts_from_file.assert_called_once_with(str(precomputed_counts))
         load_counts_from_salmon.assert_not_called()
 
+    def test_run_deseq2_cli_exports_gene_tables_before_deseq(self) -> None:
+        quant_dir = self.root / "03_quant"
+        quant_dir.mkdir(parents=True, exist_ok=True)
+        exported_counts = quant_dir / "gene_counts.csv"
+        gtf_path = self._write_gtf()
+
+        coldata_path = self.root / "coldata.csv"
+        with coldata_path.open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=["sample", "condition"])
+            writer.writeheader()
+            writer.writerow({"sample": "sample1", "condition": "A"})
+            writer.writerow({"sample": "sample2", "condition": "B"})
+
+        output_dir = self.root / "04_deseq2"
+        args = argparse.Namespace(
+            salmon_dir=str(quant_dir),
+            gene_counts=None,
+            coldata=str(coldata_path),
+            gtf=str(gtf_path),
+            tx2gene=None,
+            output_dir=str(output_dir),
+            design="~condition",
+            alpha=0.05,
+            lfc_threshold=2.0,
+            threads=None,
+            contrast=None,
+        )
+
+        fake_results = pd.DataFrame(
+            {
+                "baseMean": [1.0],
+                "log2FoldChange": [0.5],
+                "pvalue": [0.1],
+                "padj": [0.2],
+            },
+            index=["geneA"],
+        )
+
+        with mock.patch("rskit.core.deseq2.SalmonExpressionExporter.export_gene_tables", return_value={
+                "gene_counts": str(exported_counts),
+                "tx2gene": str(quant_dir / "tx2gene.tsv"),
+             }) as export_gene_tables, \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.load_counts_from_file", return_value=pd.DataFrame({"geneA": [10, 12]}, index=["sample1", "sample2"])) as load_counts_from_file, \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.load_counts_from_salmon") as load_counts_from_salmon, \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.analyze", return_value=fake_results), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.save_results", return_value={}), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_volcano"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_pca"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.get_summary", return_value={
+                 "total_genes": 1,
+                 "significant_genes": 0,
+                 "upregulated_genes": 0,
+                 "downregulated_genes": 0,
+                 "alpha": 0.05,
+             }):
+            run_deseq2_cli(args)
+
+        export_gene_tables.assert_called_once_with(
+            salmon_dir=str(quant_dir),
+            output_dir=str(quant_dir),
+            gtf_file=str(gtf_path),
+            tx2gene=None,
+            sample_names=["sample1", "sample2"],
+        )
+        load_counts_from_file.assert_called_once_with(str(exported_counts))
+        load_counts_from_salmon.assert_not_called()
+
     def test_main_all_passes_quant_gene_counts_into_deseq(self) -> None:
         coldata_path = self.root / "coldata.csv"
         with coldata_path.open("w", newline="", encoding="utf-8") as handle:

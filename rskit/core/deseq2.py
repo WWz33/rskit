@@ -556,18 +556,15 @@ def run_deseq2_cli(args):
             logger.info(f"Using precomputed gene counts from {existing_counts}")
             counts_df = analyzer.load_counts_from_file(str(existing_counts))
         else:
-        # Load from Salmon using pytximport
-            logger.info(f"Loading counts from Salmon directory: {args.salmon_dir}")
-            counts_df = analyzer.load_counts_from_salmon(
+            logger.info(f"Exporting gene-level quantification tables before DESeq2: {args.salmon_dir}")
+            expression_outputs = SalmonExpressionExporter().export_gene_tables(
                 salmon_dir=args.salmon_dir,
-                coldata=metadata_df,
+                output_dir=args.salmon_dir,
                 gtf_file=args.gtf,
                 tx2gene=args.tx2gene,
-                output_dir=str(output_dir)
+                sample_names=list(metadata_df.index),
             )
-            
-            counts_file = analyzer.save_gene_counts(str(output_dir), "gene_counts")
-            logger.info(f"Saved tximport gene counts to {counts_file}")
+            counts_df = analyzer.load_counts_from_file(expression_outputs["gene_counts"])
         
     elif args.gene_counts:
         # Load from gene counts file
