@@ -9,3 +9,8 @@ data/reference/*
 data/results/*
 logs/*
 *.log
+
+# Agent/workflow state
+.ccg/
+.omx/
+.workflow/
