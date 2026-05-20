@@ -400,9 +400,9 @@ def main():
         help="Path to transcript-to-gene mapping file for gene-level expression export")
     parser_quant.add_argument("-t", "--threads", type=int, default=8, help="Number of threads per sample")
     parser_quant.add_argument("-p", "--parallel", type=int, help="Total cores for parallel processing")
-    parser_quant.add_argument("--trim", action="store_true", help="Trim reads with fastp")
-    parser_quant.add_argument("--force-index", action="store_true", help="Force rebuild index")
-    parser_quant.add_argument("--skip-existing", action="store_true", help="Skip samples if output already exists")
+    parser_quant.add_argument("-tr", "--trim", action="store_true", help="Trim reads with fastp")
+    parser_quant.add_argument("-fi", "--force-index", action="store_true", help="Force rebuild index")
+    parser_quant.add_argument("-se", "--skip-existing", action="store_true", help="Skip samples if output already exists")
     parser_quant.set_defaults(func=main_quant)
     
     # deseq2 command
@@ -436,13 +436,13 @@ Examples:
         help="Work directory")
     parser_deseq2.add_argument("-o", "--output-dir", dest="output_dir", default=None,
         help="Custom output directory for DESeq2 results")
-    parser_deseq2.add_argument("--design", default="~condition",
+    parser_deseq2.add_argument("-d", "--design", default="~condition",
         help="Design formula (e.g., '~condition', '~batch + condition')")
-    parser_deseq2.add_argument("--contrast",
+    parser_deseq2.add_argument("-c", "--contrast",
         help="Contrast specification (e.g., 'condition,treatment,control')")
-    parser_deseq2.add_argument("--alpha", type=float, default=0.05,
+    parser_deseq2.add_argument("-a", "--alpha", type=float, default=0.05,
         help="Significance threshold for adjusted p-values")
-    parser_deseq2.add_argument("--lfc", dest="lfc_threshold", type=float, default=2.0,
+    parser_deseq2.add_argument("-l", "--lfc", dest="lfc_threshold", type=float, default=2.0,
         help="Log2 fold change threshold for significant genes")
     parser_deseq2.add_argument("-t", "--threads", type=int, default=None,
         help="Number of threads for parallel processing")
@@ -467,7 +467,7 @@ Examples:
         help="Path to sample metadata file (CSV/TSV)")
     parser_wgcna.add_argument("-G", "--gene-info", dest="gene_info",
         help="Path to gene metadata file (CSV/TSV)")
-    parser_wgcna.add_argument("-sep", "--sep", default=None,
+    parser_wgcna.add_argument("-sp", "-sep", "--sep", default=None,
         help="Override separator for input files")
     parser_wgcna.add_argument("-n", "--name", default="WGCNA",
         help="Name for the WGCNA analysis")
@@ -475,21 +475,21 @@ Examples:
         help="Species for enrichment analysis (Human, Mouse, Yeast, Fly, Fish, Worm)")
     parser_wgcna.add_argument("-l", "--level", default="gene", choices=["gene", "transcript"],
         help="Data level (gene or transcript)")
-    parser_wgcna.add_argument("-nt", "--network-type", dest="network_type", default="signed hybrid",
+    parser_wgcna.add_argument("-nw", "-nt", "--network-type", dest="network_type", default="signed hybrid",
         choices=["unsigned", "signed", "signed hybrid"], help="Type of network")
-    parser_wgcna.add_argument("-tom", "--tom-type", dest="tom_type", default="signed",
+    parser_wgcna.add_argument("-tt", "-tom", "--tom-type", dest="tom_type", default="signed",
         choices=["unsigned", "signed"], help="Type of TOM")
-    parser_wgcna.add_argument("-min", "--min-module-size", dest="min_module_size", type=int, default=50,
+    parser_wgcna.add_argument("-ms", "-min", "--min-module-size", dest="min_module_size", type=int, default=50,
         help="Minimum module size")
     parser_wgcna.add_argument("-p", "--power", type=int,
         help="Soft thresholding power (auto-detected if not specified)")
-    parser_wgcna.add_argument("-rsquared", "--rsquared-cut", dest="rsquared_cut", type=float, default=0.9,
+    parser_wgcna.add_argument("-rs", "-rsquared", "--rsquared-cut", dest="rsquared_cut", type=float, default=0.9,
         help="R-squared cutoff")
-    parser_wgcna.add_argument("-mean", "--mean-cut", dest="mean_cut", type=int, default=100,
+    parser_wgcna.add_argument("-mc", "-mean", "--mean-cut", dest="mean_cut", type=int, default=100,
         help="Mean connectivity cutoff")
-    parser_wgcna.add_argument("-mediss", "--mediss-thresh", dest="mediss_thresh", type=float, default=0.2,
+    parser_wgcna.add_argument("-md", "-mediss", "--mediss-thresh", dest="mediss_thresh", type=float, default=0.2,
         help="Module merging threshold")
-    parser_wgcna.add_argument("-tpm", "--tpm-cutoff", dest="tpm_cutoff", type=int, default=1,
+    parser_wgcna.add_argument("-tc", "-tpm", "--tpm-cutoff", dest="tpm_cutoff", type=int, default=1,
         help="TPM cutoff for filtering")
     
     parser_wgcna.set_defaults(func=main_wgcna)
@@ -502,9 +502,9 @@ Examples:
         )
         parser_validate.add_argument("-S", "--coldata", required=True,
             help="Coldata file (CSV/TSV) with a sample column")
-        parser_validate.add_argument("--design", default="~condition",
+        parser_validate.add_argument("-d", "--design", default="~condition",
             help="DESeq2 design formula used to validate required metadata columns")
-        parser_validate.add_argument("--check-reads", action="store_true",
+        parser_validate.add_argument("-r", "--check-reads", action="store_true",
             help="Require r1/r2 columns and verify read files exist")
         parser_validate.add_argument("-gc", "--gene-counts", dest="gene_counts",
             help="Optional gene counts matrix to validate against coldata")
@@ -524,7 +524,7 @@ Examples:
         help="Template type to write")
     parser_template.add_argument("-o", "--output", required=True,
         help="Output template path; .csv writes CSV and .tsv/.txt writes TSV")
-    parser_template.add_argument("--force", action="store_true",
+    parser_template.add_argument("-f", "--force", action="store_true",
         help="Overwrite output file if it already exists")
     parser_template.set_defaults(func=main_template)
     
@@ -561,19 +561,19 @@ Examples:
         help="Number of threads per sample")
     parser_all.add_argument("-p", "--parallel", type=int,
         help="Total cores for parallel processing")
-    parser_all.add_argument("--trim", action="store_true",
+    parser_all.add_argument("-tr", "--trim", action="store_true",
         help="Trim reads with fastp")
-    parser_all.add_argument("--force-index", action="store_true",
+    parser_all.add_argument("-fi", "--force-index", action="store_true",
         help="Force rebuild index")
-    parser_all.add_argument("--skip-existing", action="store_true",
+    parser_all.add_argument("-se", "--skip-existing", action="store_true",
         help="Skip samples if output already exists")
-    parser_all.add_argument("--design", default="~condition",
+    parser_all.add_argument("-d", "--design", default="~condition",
         help="Design formula (e.g., '~condition', '~batch + condition')")
-    parser_all.add_argument("--contrast",
+    parser_all.add_argument("-c", "--contrast",
         help="Contrast specification (e.g., 'condition,treatment,control')")
-    parser_all.add_argument("--alpha", type=float, default=0.05,
+    parser_all.add_argument("-a", "--alpha", type=float, default=0.05,
         help="Significance threshold for adjusted p-values")
-    parser_all.add_argument("--lfc", dest="lfc_threshold", type=float, default=2.0,
+    parser_all.add_argument("-l", "--lfc", dest="lfc_threshold", type=float, default=2.0,
         help="Log2 fold change threshold for significant genes")
     
     parser_all.set_defaults(func=main_all)

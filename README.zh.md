@@ -59,7 +59,7 @@ rskit template contrast -o contrast.tsv
 只校验 metadata 列、read 路径、count 或 expression matrix 的 sample ID，不运行 STAR、Salmon、DESeq2 或 WGCNA。
 
 ```bash
-rskit validate -S coldata.csv --check-reads -gc counts.csv --design "~batch + condition"
+rskit validate -S coldata.csv -r -gc counts.csv -d "~batch + condition"
 rskit doctor -S coldata.csv -e expression.csv
 ```
 
@@ -69,7 +69,7 @@ rskit doctor -S coldata.csv -e expression.csv
 
 ```bash
 rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
-rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ --design "~batch + condition"
+rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ -d "~batch + condition"
 ```
 
 ### 我只需要定量
@@ -86,8 +86,8 @@ rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -
 可以直接提供矩阵，也可以指向 `quant` 输出目录，让 rskit 优先复用已有的 `gene_counts.csv` 或 `gene_counts.tsv`。
 
 ```bash
-rskit deseq2 -gc counts.csv -S coldata.csv --contrast condition,treatment,control
-rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf --design "~batch + condition"
+rskit deseq2 -gc counts.csv -S coldata.csv -c condition,treatment,control
+rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf -d "~batch + condition"
 ```
 
 ### 我想分析共表达模块
@@ -125,64 +125,65 @@ sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
 
 完整流程：定量 + DESeq2 分析。
 
-| Option | Description |
-|--------|-------------|
-| `-S, --coldata` | 包含 `sample,id,condition,r1,r2` 的 coldata 文件 |
-| `-g, --genome-fasta` | Genome FASTA 文件 |
-| `-gtf, --gtf-file` | GTF annotation 文件 |
-| `-gf, --transcript-fasta` | Transcript FASTA 文件 |
-| `-o, --output-dir` | 输出目录 |
-| `-idx, --index-dir` | STAR index 目录 |
-| `-t2g, --tx2gene` | 已有 transcript-to-gene mapping 文件；否则在 quant 阶段从 `--gtf-file` 创建 `tx2gene.tsv` |
-| `-t, --threads` | 每个样本使用的线程数 |
-| `-p, --parallel` | 并行执行使用的总核心数 |
-| `--trim` | 使用 fastp 修剪 reads |
-| `--force-index` | 强制重建 STAR index |
-| `--skip-existing` | 已有输出时跳过样本任务 |
-| `--design` | DESeq2 design formula |
-| `--contrast` | Contrast specification |
-| `--alpha` | Adjusted p-value threshold |
-| `--lfc` | Log2 fold-change threshold |
+| 简写 | 长参数 | 说明 |
+|------|--------|------|
+| `-S` | `--coldata` | 必需的 coldata 文件，包含 `sample,id,condition,r1,r2`；相对 `r1`/`r2` 路径按该文件所在目录解析。 |
+| `-g` | `--genome-fasta` | 必需的 genome FASTA，用于构建或检查 STAR index。 |
+| `-gtf` | `--gtf-file` | 必需的 GTF/GFF annotation，用于 STAR，并在未提供 `--tx2gene` 时生成 `tx2gene.tsv`。 |
+| `-gf` | `--transcript-fasta` | 必需的 transcript FASTA，用于 Salmon 定量。 |
+| `-o` | `--output-dir` | 必需的流程输出目录；rskit 会在其中创建 `00_index/`、`02_bam/`、`03_quant/` 和 `04_deseq2/`。 |
+| `-idx` | `--index-dir` | 可选的已有 STAR index 目录；默认使用 `<output-dir>/00_index`。 |
+| `-t2g` | `--tx2gene` | 可选 transcript-to-gene mapping；未提供时从 `--gtf-file` 写出 `03_quant/tx2gene.tsv`。 |
+| `-t` | `--threads` | 顺序运行时每个样本的线程数；也作为 index 和 DESeq2 的默认线程设置。 |
+| `-p` | `--parallel` | 多样本并行使用的总核心数；rskit 会按样本数分配。 |
+| `-tr` | `--trim` | alignment 前运行 fastp，并使用修剪后的 FASTQ。 |
+| `-fi` | `--force-index` | 即使 index 目录已存在，也强制重建 STAR index。 |
+| `-se` | `--skip-existing` | 目标输出已存在时跳过对应样本任务。 |
+| `-d` | `--design` | DESeq2 design formula；引用的每一列都必须存在于 coldata。默认：`~condition`。 |
+| `-c` | `--contrast` | DESeq2 contrast，格式为 `factor,level1,level2`；factor 和 level 会按 coldata 校验。 |
+| `-a` | `--alpha` | summary 使用的 adjusted p-value 阈值。默认：`0.05`。 |
+| `-l` | `--lfc` | summary 使用的绝对 log2 fold-change 阈值。默认：`2.0`。 |
 
 ### `rskit quant`
 
 完整定量流程：index -> align -> quant -> 基因级表格导出。
 
-| Option | Description |
-|--------|-------------|
-| `-s, --sample` | 单样本模式的样本名 |
-| `-S, --coldata` | 包含 `sample,r1,r2` 的样本文件 |
-| `-1, --r1` | First read 文件 |
-| `-2, --r2` | Second read 文件 |
-| `-g, --genome-fasta` | Genome FASTA 文件 |
-| `-gtf, --gtf-file` | GTF annotation 文件 |
-| `-gf, --transcript-fasta` | Transcript FASTA 文件 |
-| `-o, --output-dir` | 输出目录 |
-| `-idx, --index-dir` | STAR index 目录 |
-| `-t2g, --tx2gene` | 用于基因级导出的已有 transcript-to-gene mapping 文件；否则从 `--gtf-file` 创建 `tx2gene.tsv` |
-| `-t, --threads` | 每个样本使用的线程数 |
-| `-p, --parallel` | 并行执行使用的总核心数 |
-| `--trim` | 使用 fastp 修剪 reads |
-| `--force-index` | 强制重建 STAR index |
-| `--skip-existing` | 已有输出时跳过样本任务 |
+| 简写 | 长参数 | 说明 |
+|------|--------|------|
+| `-s` | `--sample` | 单样本模式的样本名；与 `-1` 和 `-2` 一起使用。 |
+| `-S` | `--coldata` | 批量样本表，包含 `sample,r1,r2`；用于替代 `--sample`、`--r1` 和 `--r2`。 |
+| `-1` | `--r1` | 单样本模式的 first read 文件。 |
+| `-2` | `--r2` | 单样本模式的 second read 文件。 |
+| `-g` | `--genome-fasta` | 必需的 genome FASTA，用于构建或检查 STAR index。 |
+| `-gtf` | `--gtf-file` | 必需 annotation，用于 STAR 和 `tx2gene.tsv` 生成。 |
+| `-gf` | `--transcript-fasta` | 必需 transcript FASTA，用于 Salmon。 |
+| `-o` | `--output-dir` | 必需输出/工作目录。 |
+| `-idx` | `--index-dir` | 可选已有 STAR index 目录；默认使用 `<output-dir>/00_index`。 |
+| `-t2g` | `--tx2gene` | 可选 transcript-to-gene mapping，用于基因级导出；未提供时从 `--gtf-file` 生成。 |
+| `-t` | `--threads` | 每个样本使用的线程数。默认：`8`。 |
+| `-p` | `--parallel` | 多样本并行执行使用的总核心数。 |
+| `-tr` | `--trim` | alignment 前运行 fastp。 |
+| `-fi` | `--force-index` | 即使 STAR index 已存在也强制重建。 |
+| `-se` | `--skip-existing` | 目标输出已存在时跳过样本任务。 |
 
 ### `rskit deseq2`
 
 DESeq2 差异表达分析。
 
-| Option | Description |
-|--------|-------------|
-| `-sd, --salmon-dir` | 包含 Salmon quant 文件夹的目录 |
-| `-gc, --gene-counts` | Gene counts matrix 文件 |
-| `-S, --coldata` | 包含 `sample` 和 `--design` 引用列的 sample metadata 文件 |
-| `-gtf, --gtf` | GTF annotation 文件 |
-| `-t2g, --tx2gene` | Transcript-to-gene mapping 文件 |
-| `--design` | Design formula |
-| `--contrast` | Contrast specification |
-| `--alpha` | Adjusted p-value threshold |
-| `--lfc` | Log2 fold-change threshold |
-| `-o, --output-dir` | 输出目录 |
-| `-t, --threads` | 线程数 |
+| 简写 | 长参数 | 说明 |
+|------|--------|------|
+| `-sd` | `--salmon-dir` | 包含 Salmon `quant.sf` 文件夹或预计算 `gene_counts.csv`/`gene_counts.tsv` 的目录；与 `--gene-counts` 互斥。 |
+| `-gc` | `--gene-counts` | Gene counts matrix 文件；与 `--salmon-dir` 互斥。 |
+| `-S` | `--coldata` | 必需 metadata 文件，包含 `sample` 和 `--design` 引用的所有列。 |
+| `-gtf` | `--gtf` | GTF/GFF annotation；从 `quant.sf` 导入且没有 `--tx2gene` 时需要。 |
+| `-t2g` | `--tx2gene` | 从 Salmon 输出导入时使用的可选 transcript-to-gene mapping。 |
+| `-w` | `--work-dir` | 用于放置默认 `04_deseq2/` 输出目录的工作目录。默认：当前目录。 |
+| `-o` | `--output-dir` | 自定义 DESeq2 输出目录；覆盖 `<work-dir>/04_deseq2`。 |
+| `-d` | `--design` | DESeq2 design formula。默认：`~condition`。 |
+| `-c` | `--contrast` | Contrast，格式为 `factor,level1,level2`；加载 counts 前按 coldata 校验。 |
+| `-a` | `--alpha` | summary 使用的 adjusted p-value 阈值。默认：`0.05`。 |
+| `-l` | `--lfc` | summary 使用的绝对 log2 fold-change 阈值。默认：`2.0`。 |
+| `-t` | `--threads` | PyDESeq2 inference 使用的 CPU 数。 |
 
 当 `--salmon-dir` 指向 `quant` 输出目录时，`deseq2` 会优先复用已有的 `gene_counts.csv` 或 `gene_counts.tsv`。只有不存在预计算 gene counts 时，才会从 `quant.sf` 重新导入。Metadata sample IDs 和 count matrix sample IDs 必须完全匹配。
 
@@ -192,46 +193,46 @@ DESeq2 差异表达分析。
 
 不运行分析工具，只校验输入文件。
 
-| Option | Description |
-|--------|-------------|
-| `-S, --coldata` | 包含 `sample` 列的 coldata 文件 |
-| `--design` | 用于校验 metadata 必需列的 DESeq2 design formula |
-| `--check-reads` | 要求存在 `r1`/`r2` 列，并检查 read 文件是否存在 |
-| `-gc, --gene-counts` | 可选 gene counts matrix，用于和 coldata 校验 |
-| `-e, --expression` | 可选 expression matrix，用于和 coldata 校验 |
+| 简写 | 长参数 | 说明 |
+|------|--------|------|
+| `-S` | `--coldata` | 必需 coldata 文件，包含 `sample` 列。 |
+| `-d` | `--design` | 用于检查 metadata 必需列的 DESeq2 design formula。默认：`~condition`。 |
+| `-r` | `--check-reads` | 要求存在 `r1`/`r2` 列，并检查 read 文件是否存在。 |
+| `-gc` | `--gene-counts` | 可选 gene counts matrix，用于按 coldata sample ID 校验。 |
+| `-e` | `--expression` | 可选 expression matrix，用于按 coldata sample ID 校验。 |
 
 ### `rskit template`
 
 写出示例输入模板文件。
 
-| Option | Description |
-|--------|-------------|
-| `template_name` | 模板类型：`coldata` 或 `contrast` |
-| `-o, --output` | 输出模板路径；`.csv` 写 CSV，`.tsv`/`.txt` 写 TSV |
-| `--force` | 输出文件已存在时允许覆盖 |
+| 简写 | 长参数 | 说明 |
+|------|--------|------|
+| n/a | `template_name` | 位置参数，模板类型：`coldata` 或 `contrast`。 |
+| `-o` | `--output` | 必需输出路径；`.csv` 写 CSV，`.tsv`/`.txt` 写 TSV。 |
+| `-f` | `--force` | 输出文件已存在时允许覆盖。 |
 
 ### `rskit wgcna`
 
 WGCNA 共表达网络分析。
 
-| Option | Description |
-|--------|-------------|
-| `-e, --expression` | Expression matrix 文件 |
-| `-o, --output-dir` | 输出目录 |
-| `-S, --coldata` | Sample metadata 文件 |
-| `-G, --gene-info` | Gene metadata 文件 |
-| `-sep, --sep` | 覆盖输入文件分隔符；默认按 CSV/TSV 扩展名自动识别 |
-| `-n, --name` | 分析名称 |
-| `-s, --species` | 用于 enrichment analysis 的物种 |
-| `-l, --level` | 数据层级：`gene` 或 `transcript` |
-| `-nt, --network-type` | Network type |
-| `-tom, --tom-type` | TOM type |
-| `-min, --min-module-size` | Minimum module size |
-| `-p, --power` | Soft thresholding power |
-| `-rsquared, --rsquared-cut` | R-squared cutoff |
-| `-mean, --mean-cut` | Mean connectivity cutoff |
-| `-mediss, --mediss-thresh` | Module merging threshold |
-| `-tpm, --tpm-cutoff` | TPM cutoff for filtering |
+| 简写 | 长参数 | 说明 |
+|------|--------|------|
+| `-e` | `--expression` | 必需 expression matrix；rows 必须是 samples，columns 是 genes。 |
+| `-o` | `--output-dir` | 必需 WGCNA 输出目录。 |
+| `-S` | `--coldata` | 可选 sample metadata 文件；sample ID 必须匹配 expression rows。 |
+| `-G` | `--gene-info` | 可选 gene metadata 文件，按 gene ID 作为 index。 |
+| `-sp` (`-sep`) | `--sep` | 可选分隔符覆盖；默认 `.csv` 用逗号，`.tsv`/`.txt` 用 tab。 |
+| `-n` | `--name` | 存入 PyWGCNA object 的分析名称。默认：`WGCNA`。 |
+| `-s` | `--species` | PyWGCNA enrichment analysis 使用的物种标签。 |
+| `-l` | `--level` | 传给 PyWGCNA 的数据层级：`gene` 或 `transcript`。默认：`gene`。 |
+| `-nw` (`-nt`) | `--network-type` | WGCNA network type：`unsigned`、`signed` 或 `signed hybrid`。 |
+| `-tt` (`-tom`) | `--tom-type` | 传给 PyWGCNA 的 TOM type：`unsigned` 或 `signed`。 |
+| `-ms` (`-min`) | `--min-module-size` | 模块检测的最小模块大小。默认：`50`。 |
+| `-p` | `--power` | Soft-thresholding power；省略时由 PyWGCNA 自动检测。 |
+| `-rs` (`-rsquared`) | `--rsquared-cut` | power 选择使用的 R-squared cutoff。默认：`0.9`。 |
+| `-mc` (`-mean`) | `--mean-cut` | Mean connectivity cutoff。默认：`100`。 |
+| `-md` (`-mediss`) | `--mediss-thresh` | 用于合并模块的 module eigengene dissimilarity threshold。默认：`0.2`。 |
+| `-tc` (`-tpm`) | `--tpm-cutoff` | PyWGCNA 过滤使用的 TPM cutoff。默认：`1`。 |
 
 ## Python API
 

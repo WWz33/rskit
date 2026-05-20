@@ -59,7 +59,7 @@ rskit template contrast -o contrast.tsv
 Validate metadata columns, read paths, and count or expression matrix sample IDs without running STAR, Salmon, DESeq2, or WGCNA.
 
 ```bash
-rskit validate -S coldata.csv --check-reads -gc counts.csv --design "~batch + condition"
+rskit validate -S coldata.csv -r -gc counts.csv -d "~batch + condition"
 rskit doctor -S coldata.csv -e expression.csv
 ```
 
@@ -69,7 +69,7 @@ Run alignment, Salmon quantification, gene-level export, and DESeq2. `quant` cre
 
 ```bash
 rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
-rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ --design "~batch + condition"
+rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ -d "~batch + condition"
 ```
 
 ### I only need quantification
@@ -86,8 +86,8 @@ rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -
 Use a matrix directly, or point at a `quant` output directory and let rskit reuse `gene_counts.csv` or `gene_counts.tsv` when present.
 
 ```bash
-rskit deseq2 -gc counts.csv -S coldata.csv --contrast condition,treatment,control
-rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf --design "~batch + condition"
+rskit deseq2 -gc counts.csv -S coldata.csv -c condition,treatment,control
+rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf -d "~batch + condition"
 ```
 
 ### I want co-expression modules
@@ -125,64 +125,65 @@ Relative `r1` and `r2` paths are resolved relative to the coldata file. Count an
 
 Complete pipeline: quantification + DESeq2 analysis.
 
-| Option | Description |
-|--------|-------------|
-| `-S, --coldata` | Coldata file with `sample,id,condition,r1,r2` |
-| `-g, --genome-fasta` | Genome FASTA file |
-| `-gtf, --gtf-file` | GTF annotation file |
-| `-gf, --transcript-fasta` | Transcript FASTA file |
-| `-o, --output-dir` | Output directory |
-| `-idx, --index-dir` | STAR index directory |
-| `-t2g, --tx2gene` | Existing transcript-to-gene mapping file; otherwise `tx2gene.tsv` is created from `--gtf-file` during quantification |
-| `-t, --threads` | Threads per sample |
-| `-p, --parallel` | Total cores for parallel execution |
-| `--trim` | Trim reads with fastp |
-| `--force-index` | Force STAR index rebuild |
-| `--skip-existing` | Skip sample work when output already exists |
-| `--design` | DESeq2 design formula |
-| `--contrast` | Contrast specification |
-| `--alpha` | Adjusted p-value threshold |
-| `--lfc` | Log2 fold-change threshold |
+| Short | Long | Description |
+|-------|------|-------------|
+| `-S` | `--coldata` | Required coldata file with `sample,id,condition,r1,r2`. Relative `r1`/`r2` paths are resolved from this file. |
+| `-g` | `--genome-fasta` | Required genome FASTA used to build or check the STAR index. |
+| `-gtf` | `--gtf-file` | Required GTF/GFF annotation used by STAR and to create `tx2gene.tsv` when `--tx2gene` is not provided. |
+| `-gf` | `--transcript-fasta` | Required transcript FASTA used by Salmon quantification. |
+| `-o` | `--output-dir` | Required workflow output directory; rskit creates `00_index/`, `02_bam/`, `03_quant/`, and `04_deseq2/` under it. |
+| `-idx` | `--index-dir` | Optional existing STAR index directory; defaults to `<output-dir>/00_index`. |
+| `-t2g` | `--tx2gene` | Optional transcript-to-gene mapping file; if omitted, rskit writes `03_quant/tx2gene.tsv` from `--gtf-file`. |
+| `-t` | `--threads` | Threads per sample when running sequentially; also used for index and DESeq2 defaults. |
+| `-p` | `--parallel` | Total cores for multi-sample parallel execution; rskit divides this across samples. |
+| `-tr` | `--trim` | Run fastp before alignment and use trimmed FASTQ files. |
+| `-fi` | `--force-index` | Rebuild the STAR index even when an index directory already exists. |
+| `-se` | `--skip-existing` | Skip sample-level work when expected output files already exist. |
+| `-d` | `--design` | DESeq2 design formula; every referenced column must exist in coldata. Default: `~condition`. |
+| `-c` | `--contrast` | DESeq2 contrast as `factor,level1,level2`; factor and levels are validated against coldata. |
+| `-a` | `--alpha` | Adjusted p-value threshold used for significance summaries. Default: `0.05`. |
+| `-l` | `--lfc` | Absolute log2 fold-change threshold used for significance summaries. Default: `2.0`. |
 
 ### `rskit quant`
 
 Complete quantification pipeline: index -> align -> quant -> gene-level table export.
 
-| Option | Description |
-|--------|-------------|
-| `-s, --sample` | Sample name for single-sample mode |
-| `-S, --coldata` | Sample file with `sample,r1,r2` |
-| `-1, --r1` | First read file |
-| `-2, --r2` | Second read file |
-| `-g, --genome-fasta` | Genome FASTA file |
-| `-gtf, --gtf-file` | GTF annotation file |
-| `-gf, --transcript-fasta` | Transcript FASTA file |
-| `-o, --output-dir` | Output directory |
-| `-idx, --index-dir` | STAR index directory |
-| `-t2g, --tx2gene` | Existing transcript-to-gene mapping file for gene-level export; otherwise `tx2gene.tsv` is created from `--gtf-file` |
-| `-t, --threads` | Threads per sample |
-| `-p, --parallel` | Total cores for parallel execution |
-| `--trim` | Trim reads with fastp |
-| `--force-index` | Force STAR index rebuild |
-| `--skip-existing` | Skip sample work when output already exists |
+| Short | Long | Description |
+|-------|------|-------------|
+| `-s` | `--sample` | Sample name for single-sample mode; use with `-1` and `-2`. |
+| `-S` | `--coldata` | Batch sample table with `sample,r1,r2`; replaces `--sample`, `--r1`, and `--r2`. |
+| `-1` | `--r1` | First read file for single-sample mode. |
+| `-2` | `--r2` | Second read file for single-sample mode. |
+| `-g` | `--genome-fasta` | Required genome FASTA used to build or check the STAR index. |
+| `-gtf` | `--gtf-file` | Required annotation used by STAR and `tx2gene.tsv` generation. |
+| `-gf` | `--transcript-fasta` | Required transcript FASTA used by Salmon. |
+| `-o` | `--output-dir` | Required output/work directory. |
+| `-idx` | `--index-dir` | Optional existing STAR index directory; defaults to `<output-dir>/00_index`. |
+| `-t2g` | `--tx2gene` | Optional transcript-to-gene mapping for gene-level export; otherwise generated from `--gtf-file`. |
+| `-t` | `--threads` | Threads per sample. Default: `8`. |
+| `-p` | `--parallel` | Total cores for multi-sample parallel execution. |
+| `-tr` | `--trim` | Run fastp before alignment. |
+| `-fi` | `--force-index` | Rebuild the STAR index even if it exists. |
+| `-se` | `--skip-existing` | Skip sample work when expected output already exists. |
 
 ### `rskit deseq2`
 
 DESeq2 differential expression analysis.
 
-| Option | Description |
-|--------|-------------|
-| `-sd, --salmon-dir` | Directory containing Salmon quant folders |
-| `-gc, --gene-counts` | Gene counts matrix file |
-| `-S, --coldata` | Sample metadata file with `sample` and all columns referenced by `--design` |
-| `-gtf, --gtf` | GTF annotation file |
-| `-t2g, --tx2gene` | Transcript-to-gene mapping file |
-| `--design` | Design formula |
-| `--contrast` | Contrast specification |
-| `--alpha` | Adjusted p-value threshold |
-| `--lfc` | Log2 fold-change threshold |
-| `-o, --output-dir` | Output directory |
-| `-t, --threads` | Number of threads |
+| Short | Long | Description |
+|-------|------|-------------|
+| `-sd` | `--salmon-dir` | Directory containing Salmon `quant.sf` folders or precomputed `gene_counts.csv`/`gene_counts.tsv`. Mutually exclusive with `--gene-counts`. |
+| `-gc` | `--gene-counts` | Gene counts matrix file. Mutually exclusive with `--salmon-dir`. |
+| `-S` | `--coldata` | Required metadata file with `sample` and every column referenced by `--design`. |
+| `-gtf` | `--gtf` | GTF/GFF annotation; required when importing `quant.sf` without `--tx2gene`. |
+| `-t2g` | `--tx2gene` | Optional transcript-to-gene mapping used when importing from Salmon outputs. |
+| `-w` | `--work-dir` | Work directory used to place the default `04_deseq2/` output directory. Default: current directory. |
+| `-o` | `--output-dir` | Custom DESeq2 output directory; overrides `<work-dir>/04_deseq2`. |
+| `-d` | `--design` | DESeq2 design formula. Default: `~condition`. |
+| `-c` | `--contrast` | Contrast as `factor,level1,level2`; validated against coldata before counts are loaded. |
+| `-a` | `--alpha` | Adjusted p-value threshold used for result summaries. Default: `0.05`. |
+| `-l` | `--lfc` | Absolute log2 fold-change threshold used for result summaries. Default: `2.0`. |
+| `-t` | `--threads` | Number of CPUs for PyDESeq2 inference. |
 
 When `--salmon-dir` points at a `quant` output directory, `deseq2` reuses `gene_counts.csv` or `gene_counts.tsv` if present. It falls back to importing from `quant.sf` only when no precomputed gene counts are available. Metadata sample IDs and count matrix sample IDs must match exactly.
 
@@ -192,46 +193,46 @@ When `--salmon-dir` points at a `quant` output directory, `deseq2` reuses `gene_
 
 Validate input files without running analysis tools.
 
-| Option | Description |
-|--------|-------------|
-| `-S, --coldata` | Coldata file with a `sample` column |
-| `--design` | DESeq2 design formula used to validate required metadata columns |
-| `--check-reads` | Require `r1`/`r2` columns and verify read files exist |
-| `-gc, --gene-counts` | Optional gene counts matrix to validate against coldata |
-| `-e, --expression` | Optional expression matrix to validate against coldata |
+| Short | Long | Description |
+|-------|------|-------------|
+| `-S` | `--coldata` | Required coldata file with a `sample` column. |
+| `-d` | `--design` | DESeq2 design formula used to check required metadata columns. Default: `~condition`. |
+| `-r` | `--check-reads` | Require `r1`/`r2` columns and verify that read files exist. |
+| `-gc` | `--gene-counts` | Optional gene counts matrix to validate against coldata sample IDs. |
+| `-e` | `--expression` | Optional expression matrix to validate against coldata sample IDs. |
 
 ### `rskit template`
 
 Write example input template files.
 
-| Option | Description |
-|--------|-------------|
-| `template_name` | Template type: `coldata` or `contrast` |
-| `-o, --output` | Output template path; `.csv` writes CSV and `.tsv`/`.txt` writes TSV |
-| `--force` | Overwrite output file if it already exists |
+| Short | Long | Description |
+|-------|------|-------------|
+| n/a | `template_name` | Positional template type: `coldata` or `contrast`. |
+| `-o` | `--output` | Required output path; `.csv` writes CSV and `.tsv`/`.txt` writes TSV. |
+| `-f` | `--force` | Overwrite the output file if it already exists. |
 
 ### `rskit wgcna`
 
 WGCNA co-expression network analysis.
 
-| Option | Description |
-|--------|-------------|
-| `-e, --expression` | Expression matrix file |
-| `-o, --output-dir` | Output directory |
-| `-S, --coldata` | Sample metadata file |
-| `-G, --gene-info` | Gene metadata file |
-| `-sep, --sep` | Override separator for input files; CSV/TSV is auto-detected by default |
-| `-n, --name` | Analysis name |
-| `-s, --species` | Species for enrichment analysis |
-| `-l, --level` | Data level: `gene` or `transcript` |
-| `-nt, --network-type` | Network type |
-| `-tom, --tom-type` | TOM type |
-| `-min, --min-module-size` | Minimum module size |
-| `-p, --power` | Soft thresholding power |
-| `-rsquared, --rsquared-cut` | R-squared cutoff |
-| `-mean, --mean-cut` | Mean connectivity cutoff |
-| `-mediss, --mediss-thresh` | Module merging threshold |
-| `-tpm, --tpm-cutoff` | TPM cutoff for filtering |
+| Short | Long | Description |
+|-------|------|-------------|
+| `-e` | `--expression` | Required expression matrix; rows must be samples and columns genes. |
+| `-o` | `--output-dir` | Required WGCNA output directory. |
+| `-S` | `--coldata` | Optional sample metadata file; sample IDs must match expression rows. |
+| `-G` | `--gene-info` | Optional gene metadata file indexed by gene ID. |
+| `-sp` (`-sep`) | `--sep` | Optional separator override; by default `.csv` uses comma and `.tsv`/`.txt` use tab. |
+| `-n` | `--name` | Analysis name stored in the PyWGCNA object. Default: `WGCNA`. |
+| `-s` | `--species` | Species label used by PyWGCNA enrichment analysis. |
+| `-l` | `--level` | Data level passed to PyWGCNA: `gene` or `transcript`. Default: `gene`. |
+| `-nw` (`-nt`) | `--network-type` | WGCNA network type: `unsigned`, `signed`, or `signed hybrid`. |
+| `-tt` (`-tom`) | `--tom-type` | TOM type passed to PyWGCNA: `unsigned` or `signed`. |
+| `-ms` (`-min`) | `--min-module-size` | Minimum module size for module detection. Default: `50`. |
+| `-p` | `--power` | Soft-thresholding power; omit to let PyWGCNA auto-detect. |
+| `-rs` (`-rsquared`) | `--rsquared-cut` | R-squared cutoff for power selection. Default: `0.9`. |
+| `-mc` (`-mean`) | `--mean-cut` | Mean connectivity cutoff. Default: `100`. |
+| `-md` (`-mediss`) | `--mediss-thresh` | Module eigengene dissimilarity threshold for merging modules. Default: `0.2`. |
+| `-tc` (`-tpm`) | `--tpm-cutoff` | TPM cutoff used by PyWGCNA filtering. Default: `1`. |
 
 ## Python API
 
