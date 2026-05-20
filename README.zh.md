@@ -339,10 +339,13 @@ results/
 04_deseq2/
 ├── deseq2_results.csv
 ├── gene_counts.csv
+├── manifest.json
 ├── pca_plot.pdf
 ├── volcano_plot.pdf
 └── ma_plot.pdf
 ```
+
+`manifest.json` 会记录 DESeq2 输入、解析后的 counts 文件、sample IDs、design、contrast、summary 和关键输出文件。
 
 ### WGCNA output
 

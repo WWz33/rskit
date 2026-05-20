@@ -339,10 +339,13 @@ results/
 04_deseq2/
 ├── deseq2_results.csv
 ├── gene_counts.csv
+├── manifest.json
 ├── pca_plot.pdf
 ├── volcano_plot.pdf
 └── ma_plot.pdf
 ```
+
+`manifest.json` records the DESeq2 inputs, resolved counts file, sample IDs, design, contrast, summary, and key output files.
 
 ### WGCNA output
 

@@ -1,5 +1,6 @@
 import argparse
 import csv
+import json
 import sys
 import tempfile
 import types
@@ -342,6 +343,63 @@ class QuantExpressionTests(unittest.TestCase):
             run_deseq2_cli(args)
 
         analyze.assert_called_once_with(contrast=["condition", "B", "A"])
+
+    def test_run_deseq2_cli_writes_manifest(self) -> None:
+        counts_path = self.root / "counts.csv"
+        pd.DataFrame({"geneA": [10, 12]}, index=["sample1", "sample2"]).to_csv(counts_path)
+        coldata_path = self.root / "coldata.csv"
+        coldata_path.write_text(
+            "sample,condition\n"
+            "sample1,A\n"
+            "sample2,B\n",
+            encoding="utf-8",
+        )
+        output_dir = self.root / "04_deseq2"
+        args = argparse.Namespace(
+            salmon_dir=None,
+            gene_counts=str(counts_path),
+            coldata=str(coldata_path),
+            gtf=None,
+            tx2gene=None,
+            output_dir=str(output_dir),
+            design="~condition",
+            alpha=0.05,
+            lfc_threshold=2.0,
+            threads=None,
+            contrast="condition,B,A",
+        )
+        fake_results = pd.DataFrame(
+            {
+                "baseMean": [1.0],
+                "log2FoldChange": [0.5],
+                "pvalue": [0.1],
+                "padj": [0.2],
+            },
+            index=["geneA"],
+        )
+
+        with mock.patch("rskit.core.deseq2.Deseq2Analyzer.load_counts_from_file", return_value=pd.DataFrame({"geneA": [10, 12]}, index=["sample1", "sample2"])), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.analyze", return_value=fake_results), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.save_results", return_value={"results": str(output_dir / "deseq2_results.csv")}), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_volcano"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_pca"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.get_summary", return_value={
+                 "total_genes": 1,
+                 "significant_genes": 0,
+                 "upregulated_genes": 0,
+                 "downregulated_genes": 0,
+                 "alpha": 0.05,
+             }):
+            run_deseq2_cli(args)
+
+        manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["command"], "deseq2")
+        self.assertEqual(manifest["samples"], ["sample1", "sample2"])
+        self.assertEqual(manifest["design"], "~condition")
+        self.assertEqual(manifest["contrast"], ["condition", "B", "A"])
+        self.assertEqual(manifest["inputs"]["counts_file"], str(counts_path))
+        self.assertEqual(manifest["outputs"]["results"], str(output_dir / "deseq2_results.csv"))
+        self.assertEqual(manifest["summary"]["total_genes"], 1)
 
     def test_main_all_passes_quant_gene_counts_into_deseq(self) -> None:
         coldata_path = self.root / "coldata.csv"

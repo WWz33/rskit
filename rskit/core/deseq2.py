@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 import pandas as pd
@@ -43,6 +44,30 @@ def parse_contrast(contrast_value: Optional[str], metadata_df: pd.DataFrame) -> 
         )
 
     return contrast
+
+
+def write_manifest(output_dir: Path, manifest: Dict) -> Path:
+    """Write a JSON run manifest and return its path."""
+    manifest_path = output_dir / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(_json_safe(manifest), indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    return manifest_path
+
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.floating):
+        return float(value)
+    return value
 
 
 class Deseq2Analyzer:
@@ -625,5 +650,30 @@ def run_deseq2_cli(args):
     logger.info(f"  - Up-regulated: {summary['upregulated_genes']}")
     logger.info(f"  - Down-regulated: {summary['downregulated_genes']}")
     logger.info("="*50)
+
+    manifest_path = write_manifest(
+        output_dir,
+        {
+            "command": "deseq2",
+            "inputs": {
+                "coldata": args.coldata,
+                "gene_counts": args.gene_counts,
+                "salmon_dir": args.salmon_dir,
+                "gtf": args.gtf,
+                "tx2gene": args.tx2gene,
+                "counts_file": counts_file,
+            },
+            "samples": list(metadata_df.index),
+            "design": args.design,
+            "contrast": contrast,
+            "summary": summary,
+            "outputs": {
+                **saved_files,
+                "volcano_plot": str(volcano_path),
+                "pca_plot": str(pca_path),
+            },
+        },
+    )
+    logger.info(f"Saved manifest: {manifest_path}")
     
     return analyzer
