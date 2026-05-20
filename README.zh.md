@@ -19,6 +19,7 @@ rskit 是一个用于 RNA-seq 分析的 Python 工具包，提供 CLI 和 Python
 - 子命令共享统一的 `--coldata` 元数据格式
 - 在 DESeq2 之前提前导出 `tx2gene.tsv` 和基因级矩阵
 - 严格校验 metadata 与 count/expression matrix 的 sample ID
+- 使用 `rskit validate` / `rskit doctor` 进行输入预检
 
 ## 安装
 
@@ -82,6 +83,16 @@ rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf --design "~batch 
 ```bash
 rskit wgcna -e expression.csv -o ./wgcna_results
 rskit wgcna -e expression.csv -S coldata.csv -G gene_info.csv -o ./wgcna_results
+```
+
+### 5. 输入预检
+
+```bash
+# 在运行分析前检查 metadata 列、read 路径和 counts/sample 对齐
+rskit validate -S coldata.csv --check-reads -gc counts.csv --design "~batch + condition"
+
+# doctor 是 validate 的别名
+rskit doctor -S coldata.csv -e expression.csv
 ```
 
 ## Coldata 格式
@@ -170,6 +181,18 @@ DESeq2 差异表达分析。
 | `-t, --threads` | 线程数 |
 
 当 `--salmon-dir` 指向 `quant` 输出目录时，`deseq2` 会优先复用已有的 `gene_counts.csv` 或 `gene_counts.tsv`。只有不存在预计算 gene counts 时，才会从 `quant.sf` 重新导入。Metadata sample IDs 和 count matrix sample IDs 必须完全匹配。
+
+### `rskit validate` / `rskit doctor`
+
+不运行分析工具，只校验输入文件。
+
+| Option | Description |
+|--------|-------------|
+| `-S, --coldata` | 包含 `sample` 列的 coldata 文件 |
+| `--design` | 用于校验 metadata 必需列的 DESeq2 design formula |
+| `--check-reads` | 要求存在 `r1`/`r2` 列，并检查 read 文件是否存在 |
+| `-gc, --gene-counts` | 可选 gene counts matrix，用于和 coldata 校验 |
+| `-e, --expression` | 可选 expression matrix，用于和 coldata 校验 |
 
 ### `rskit wgcna`
 

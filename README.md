@@ -19,6 +19,7 @@ A Python toolkit for RNA-seq analysis with a CLI and Python API for common workf
 - Shared `--coldata` metadata format across subcommands
 - Early `tx2gene.tsv` and gene-level matrix export before DESeq2
 - Strict sample ID validation between metadata and count/expression matrices
+- Input preflight checks with `rskit validate` / `rskit doctor`
 
 ## Installation
 
@@ -82,6 +83,16 @@ rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf --design "~batch 
 ```bash
 rskit wgcna -e expression.csv -o ./wgcna_results
 rskit wgcna -e expression.csv -S coldata.csv -G gene_info.csv -o ./wgcna_results
+```
+
+### 5. Input validation
+
+```bash
+# Check metadata columns, read paths, and counts/sample alignment before running analysis
+rskit validate -S coldata.csv --check-reads -gc counts.csv --design "~batch + condition"
+
+# doctor is an alias for validate
+rskit doctor -S coldata.csv -e expression.csv
 ```
 
 ## Coldata Format
@@ -170,6 +181,18 @@ DESeq2 differential expression analysis.
 | `-t, --threads` | Number of threads |
 
 When `--salmon-dir` points at a `quant` output directory, `deseq2` reuses `gene_counts.csv` or `gene_counts.tsv` if present. It falls back to importing from `quant.sf` only when no precomputed gene counts are available. Metadata sample IDs and count matrix sample IDs must match exactly.
+
+### `rskit validate` / `rskit doctor`
+
+Validate input files without running analysis tools.
+
+| Option | Description |
+|--------|-------------|
+| `-S, --coldata` | Coldata file with a `sample` column |
+| `--design` | DESeq2 design formula used to validate required metadata columns |
+| `--check-reads` | Require `r1`/`r2` columns and verify read files exist |
+| `-gc, --gene-counts` | Optional gene counts matrix to validate against coldata |
+| `-e, --expression` | Optional expression matrix to validate against coldata |
 
 ### `rskit wgcna`
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Tuple
 from rskit.input_contracts import load_coldata, resolve_path_from_table
+from rskit.input_validation import validate_input_files
 from rskit.config import StarConfig, SalmonConfig, PipelineConfig, DESeq2Config
 from rskit.core.pipeline import RNAseqPipeline
 from rskit.core.deseq2 import Deseq2Analyzer, run_deseq2_cli
@@ -276,6 +277,19 @@ def main_wgcna(args):
         raise
 
 
+def main_validate(args):
+    """Validate input files without running analysis tools."""
+    messages = validate_input_files(
+        coldata=args.coldata,
+        design=args.design,
+        check_reads=args.check_reads,
+        gene_counts=args.gene_counts,
+        expression=args.expression,
+    )
+    for message in messages:
+        logger.info(f"OK: {message}")
+
+
 def main_all(args):
     """Run complete pipeline: quant -> deseq2"""
     logger.info("="*60)
@@ -472,6 +486,27 @@ Examples:
         help="TPM cutoff for filtering")
     
     parser_wgcna.set_defaults(func=main_wgcna)
+
+    def add_validate_parser(command: str, help_text: str):
+        parser_validate = subparsers.add_parser(
+            command,
+            help=help_text,
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        )
+        parser_validate.add_argument("-S", "--coldata", required=True,
+            help="Coldata file (CSV/TSV) with a sample column")
+        parser_validate.add_argument("--design", default="~condition",
+            help="DESeq2 design formula used to validate required metadata columns")
+        parser_validate.add_argument("--check-reads", action="store_true",
+            help="Require r1/r2 columns and verify read files exist")
+        parser_validate.add_argument("-gc", "--gene-counts", dest="gene_counts",
+            help="Optional gene counts matrix to validate against coldata")
+        parser_validate.add_argument("-e", "--expression",
+            help="Optional expression matrix to validate against coldata")
+        parser_validate.set_defaults(func=main_validate)
+
+    add_validate_parser("validate", "Validate input files without running analysis tools")
+    add_validate_parser("doctor", "Alias for validate")
     
     # all command (quant -> deseq2)
     parser_all = subparsers.add_parser("all", 
