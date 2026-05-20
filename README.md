@@ -20,6 +20,7 @@ A Python toolkit for RNA-seq analysis with a CLI and Python API for common workf
 - Early `tx2gene.tsv` and gene-level matrix export before DESeq2
 - Strict sample ID validation between metadata and count/expression matrices
 - Input preflight checks with `rskit validate` / `rskit doctor`
+- Example input templates with `rskit template`
 
 ## Installation
 
@@ -93,6 +94,13 @@ rskit validate -S coldata.csv --check-reads -gc counts.csv --design "~batch + co
 
 # doctor is an alias for validate
 rskit doctor -S coldata.csv -e expression.csv
+```
+
+### 6. Input templates
+
+```bash
+rskit template coldata -o coldata.csv
+rskit template contrast -o contrast.tsv
 ```
 
 ## Coldata Format
@@ -193,6 +201,16 @@ Validate input files without running analysis tools.
 | `--check-reads` | Require `r1`/`r2` columns and verify read files exist |
 | `-gc, --gene-counts` | Optional gene counts matrix to validate against coldata |
 | `-e, --expression` | Optional expression matrix to validate against coldata |
+
+### `rskit template`
+
+Write example input template files.
+
+| Option | Description |
+|--------|-------------|
+| `template_name` | Template type: `coldata` or `contrast` |
+| `-o, --output` | Output template path; `.csv` writes CSV and `.tsv`/`.txt` writes TSV |
+| `--force` | Overwrite output file if it already exists |
 
 ### `rskit wgcna`
 

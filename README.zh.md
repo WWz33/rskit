@@ -20,6 +20,7 @@ rskit 是一个用于 RNA-seq 分析的 Python 工具包，提供 CLI 和 Python
 - 在 DESeq2 之前提前导出 `tx2gene.tsv` 和基因级矩阵
 - 严格校验 metadata 与 count/expression matrix 的 sample ID
 - 使用 `rskit validate` / `rskit doctor` 进行输入预检
+- 使用 `rskit template` 生成示例输入模板
 
 ## 安装
 
@@ -93,6 +94,13 @@ rskit validate -S coldata.csv --check-reads -gc counts.csv --design "~batch + co
 
 # doctor 是 validate 的别名
 rskit doctor -S coldata.csv -e expression.csv
+```
+
+### 6. 输入模板
+
+```bash
+rskit template coldata -o coldata.csv
+rskit template contrast -o contrast.tsv
 ```
 
 ## Coldata 格式
@@ -193,6 +201,16 @@ DESeq2 差异表达分析。
 | `--check-reads` | 要求存在 `r1`/`r2` 列，并检查 read 文件是否存在 |
 | `-gc, --gene-counts` | 可选 gene counts matrix，用于和 coldata 校验 |
 | `-e, --expression` | 可选 expression matrix，用于和 coldata 校验 |
+
+### `rskit template`
+
+写出示例输入模板文件。
+
+| Option | Description |
+|--------|-------------|
+| `template_name` | 模板类型：`coldata` 或 `contrast` |
+| `-o, --output` | 输出模板路径；`.csv` 写 CSV，`.tsv`/`.txt` 写 TSV |
+| `--force` | 输出文件已存在时允许覆盖 |
 
 ### `rskit wgcna`
 

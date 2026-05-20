@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict, Tuple
 from rskit.input_contracts import load_coldata, resolve_path_from_table
 from rskit.input_validation import validate_input_files
+from rskit.templates import write_template
 from rskit.config import StarConfig, SalmonConfig, PipelineConfig, DESeq2Config
 from rskit.core.pipeline import RNAseqPipeline
 from rskit.core.deseq2 import Deseq2Analyzer, run_deseq2_cli
@@ -290,6 +291,12 @@ def main_validate(args):
         logger.info(f"OK: {message}")
 
 
+def main_template(args):
+    """Write an example input template."""
+    output_path = write_template(args.template_name, args.output, force=args.force)
+    logger.info(f"Wrote {args.template_name} template to {output_path}")
+
+
 def main_all(args):
     """Run complete pipeline: quant -> deseq2"""
     logger.info("="*60)
@@ -507,6 +514,19 @@ Examples:
 
     add_validate_parser("validate", "Validate input files without running analysis tools")
     add_validate_parser("doctor", "Alias for validate")
+
+    parser_template = subparsers.add_parser(
+        "template",
+        help="Write example input template files",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser_template.add_argument("template_name", choices=["coldata", "contrast"],
+        help="Template type to write")
+    parser_template.add_argument("-o", "--output", required=True,
+        help="Output template path; .csv writes CSV and .tsv/.txt writes TSV")
+    parser_template.add_argument("--force", action="store_true",
+        help="Overwrite output file if it already exists")
+    parser_template.set_defaults(func=main_template)
     
     # all command (quant -> deseq2)
     parser_all = subparsers.add_parser("all", 
