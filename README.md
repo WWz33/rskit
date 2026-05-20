@@ -43,64 +43,60 @@ pip install -e .
 - Salmon
 - fastp (optional)
 
-## Quick Start
+## User Scenarios
 
-### 1. Complete pipeline
+### I need a valid input file to start from
 
-```bash
-rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
-
-# With custom design formula
-rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ --design "~batch + condition"
-```
-
-### 2. Quantification pipeline
-
-`quant` writes per-sample Salmon output plus `tx2gene.tsv`, `gene_counts.csv`, `gene_tpm.csv`, and `gene_log2_tpm_plus1.csv` into `03_quant/`. The transcript-to-gene map is created during quantification, before DESeq2 needs gene-level counts.
-
-```bash
-# Single sample
-rskit quant -s sample1 -1 sample1_R1.fq.gz -2 sample1_R2.fq.gz -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
-
-# Multiple samples using coldata
-rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
-```
-
-### 3. Differential expression analysis
-
-```bash
-# Prefer precomputed gene counts from a quant directory
-rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf
-
-# Or provide a counts matrix directly
-rskit deseq2 -gc counts.csv -S coldata.csv
-
-# Multi-factor design
-rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf --design "~batch + condition"
-```
-
-### 4. WGCNA
-
-```bash
-rskit wgcna -e expression.csv -o ./wgcna_results
-rskit wgcna -e expression.csv -S coldata.csv -G gene_info.csv -o ./wgcna_results
-```
-
-### 5. Input validation
-
-```bash
-# Check metadata columns, read paths, and counts/sample alignment before running analysis
-rskit validate -S coldata.csv --check-reads -gc counts.csv --design "~batch + condition"
-
-# doctor is an alias for validate
-rskit doctor -S coldata.csv -e expression.csv
-```
-
-### 6. Input templates
+Generate a small `coldata` template instead of guessing column names.
 
 ```bash
 rskit template coldata -o coldata.csv
 rskit template contrast -o contrast.tsv
+```
+
+### I want to catch input problems before a long run
+
+Validate metadata columns, read paths, and count or expression matrix sample IDs without running STAR, Salmon, DESeq2, or WGCNA.
+
+```bash
+rskit validate -S coldata.csv --check-reads -gc counts.csv --design "~batch + condition"
+rskit doctor -S coldata.csv -e expression.csv
+```
+
+### I have FASTQ files and want the full RNA-seq workflow
+
+Run alignment, Salmon quantification, gene-level export, and DESeq2. `quant` creates `tx2gene.tsv`, `gene_counts.csv`, `gene_tpm.csv`, and `gene_log2_tpm_plus1.csv` before DESeq2 needs gene-level counts.
+
+```bash
+rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
+rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ --design "~batch + condition"
+```
+
+### I only need quantification
+
+Use single-sample mode for one library or `--coldata` for a batch.
+
+```bash
+rskit quant -s sample1 -1 sample1_R1.fq.gz -2 sample1_R2.fq.gz -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
+rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
+```
+
+### I already have gene counts and want DESeq2
+
+Use a matrix directly, or point at a `quant` output directory and let rskit reuse `gene_counts.csv` or `gene_counts.tsv` when present.
+
+```bash
+rskit deseq2 -gc counts.csv -S coldata.csv --contrast condition,treatment,control
+rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf --design "~batch + condition"
+```
+
+### I want co-expression modules
+
+Provide an expression matrix as rows = samples and columns = genes. Add coldata and gene metadata when available.
+
+```bash
+rskit wgcna -e expression.csv -o ./wgcna_results
+rskit wgcna -e expression.csv -S coldata.csv -G gene_info.csv -o ./wgcna_results
 ```
 
 ## Coldata Format

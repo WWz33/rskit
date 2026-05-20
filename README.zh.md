@@ -43,64 +43,60 @@ pip install -e .
 - Salmon
 - fastp (optional)
 
-## 快速开始
+## 用户场景
 
-### 1. 完整流程
+### 我需要一个可用的输入文件起点
 
-```bash
-rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
-
-# With custom design formula
-rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ --design "~batch + condition"
-```
-
-### 2. 定量流程
-
-`quant` 会在 `03_quant/` 中写入每个样本的 Salmon 输出，以及 `tx2gene.tsv`、`gene_counts.csv`、`gene_tpm.csv` 和 `gene_log2_tpm_plus1.csv`。transcript-to-gene 映射在定量阶段生成，早于 DESeq2 对基因级 counts 的使用。
-
-```bash
-# Single sample
-rskit quant -s sample1 -1 sample1_R1.fq.gz -2 sample1_R2.fq.gz -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
-
-# Multiple samples using coldata
-rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
-```
-
-### 3. 差异表达分析
-
-```bash
-# Prefer precomputed gene counts from a quant directory
-rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf
-
-# Or provide a counts matrix directly
-rskit deseq2 -gc counts.csv -S coldata.csv
-
-# Multi-factor design
-rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf --design "~batch + condition"
-```
-
-### 4. WGCNA
-
-```bash
-rskit wgcna -e expression.csv -o ./wgcna_results
-rskit wgcna -e expression.csv -S coldata.csv -G gene_info.csv -o ./wgcna_results
-```
-
-### 5. 输入预检
-
-```bash
-# 在运行分析前检查 metadata 列、read 路径和 counts/sample 对齐
-rskit validate -S coldata.csv --check-reads -gc counts.csv --design "~batch + condition"
-
-# doctor 是 validate 的别名
-rskit doctor -S coldata.csv -e expression.csv
-```
-
-### 6. 输入模板
+先生成一个小的 `coldata` 模板，不需要猜字段名。
 
 ```bash
 rskit template coldata -o coldata.csv
 rskit template contrast -o contrast.tsv
+```
+
+### 我想在长时间运行前发现输入问题
+
+只校验 metadata 列、read 路径、count 或 expression matrix 的 sample ID，不运行 STAR、Salmon、DESeq2 或 WGCNA。
+
+```bash
+rskit validate -S coldata.csv --check-reads -gc counts.csv --design "~batch + condition"
+rskit doctor -S coldata.csv -e expression.csv
+```
+
+### 我有 FASTQ 文件，想跑完整 RNA-seq 流程
+
+运行 alignment、Salmon quantification、基因级导出和 DESeq2。`quant` 会在 DESeq2 使用基因级 counts 前创建 `tx2gene.tsv`、`gene_counts.csv`、`gene_tpm.csv` 和 `gene_log2_tpm_plus1.csv`。
+
+```bash
+rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
+rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ --design "~batch + condition"
+```
+
+### 我只需要定量
+
+单个文库用 single-sample 模式，批量样本用 `--coldata`。
+
+```bash
+rskit quant -s sample1 -1 sample1_R1.fq.gz -2 sample1_R2.fq.gz -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
+rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
+```
+
+### 我已经有 gene counts，想直接做 DESeq2
+
+可以直接提供矩阵，也可以指向 `quant` 输出目录，让 rskit 优先复用已有的 `gene_counts.csv` 或 `gene_counts.tsv`。
+
+```bash
+rskit deseq2 -gc counts.csv -S coldata.csv --contrast condition,treatment,control
+rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf --design "~batch + condition"
+```
+
+### 我想分析共表达模块
+
+expression matrix 使用 rows = samples、columns = genes。有 coldata 和 gene metadata 时一起提供。
+
+```bash
+rskit wgcna -e expression.csv -o ./wgcna_results
+rskit wgcna -e expression.csv -S coldata.csv -G gene_info.csv -o ./wgcna_results
 ```
 
 ## Coldata 格式
