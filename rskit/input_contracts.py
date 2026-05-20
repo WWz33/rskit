@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence
 
 import pandas as pd
 
@@ -68,6 +68,37 @@ def validate_sample_alignment(
 
     if problems:
         raise ValueError("Sample IDs do not match (" + "; ".join(problems) + ")")
+
+
+def orient_sample_table(
+    table: pd.DataFrame,
+    metadata: pd.DataFrame,
+    table_name: str = "input table",
+) -> pd.DataFrame:
+    """Return a table as samples x features using metadata sample IDs."""
+    metadata_samples = {str(sample_id) for sample_id in metadata.index}
+    row_samples = {str(sample_id) for sample_id in table.index}
+    column_samples = {str(column) for column in table.columns}
+
+    if metadata_samples.issubset(column_samples) and not metadata_samples.issubset(row_samples):
+        table = table.T
+
+    validate_sample_alignment(table, metadata, table_name=table_name)
+    return table.loc[metadata.index]
+
+
+def design_columns(design: str) -> List[str]:
+    """Extract metadata column names from a simple DESeq2 design formula."""
+    expression = design.strip()
+    if expression.startswith("~"):
+        expression = expression[1:]
+
+    columns: List[str] = []
+    for term in expression.replace("+", " ").split():
+        column = term.strip()
+        if column and column != "1" and column not in columns:
+            columns.append(column)
+    return columns
 
 
 def _preview_values(values: Sequence[str], limit: int = 5) -> str:

@@ -6,7 +6,9 @@ import pandas as pd
 
 from rskit.input_contracts import (
     detect_separator,
+    design_columns,
     load_coldata,
+    orient_sample_table,
     read_table,
     resolve_path_from_table,
     validate_sample_alignment,
@@ -62,6 +64,24 @@ class InputContractTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "missing from counts"):
             validate_sample_alignment(table, metadata, table_name="counts")
+
+    def test_orient_sample_table_transposes_when_metadata_matches_columns(self) -> None:
+        table = pd.DataFrame(
+            {"s1": [10, 20], "s2": [12, 24]},
+            index=["geneA", "geneB"],
+        )
+        metadata = pd.DataFrame({"condition": ["A", "B"]}, index=["s1", "s2"])
+
+        oriented = orient_sample_table(table, metadata, table_name="counts")
+
+        self.assertEqual(list(oriented.index), ["s1", "s2"])
+        self.assertEqual(list(oriented.columns), ["geneA", "geneB"])
+        self.assertEqual(oriented.loc["s2", "geneB"], 24)
+
+    def test_design_columns_extracts_simple_formula_terms(self) -> None:
+        self.assertEqual(design_columns("~condition"), ["condition"])
+        self.assertEqual(design_columns("~batch + condition"), ["batch", "condition"])
+        self.assertEqual(design_columns("~ 1"), [])
 
 
 if __name__ == "__main__":

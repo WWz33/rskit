@@ -177,7 +177,9 @@ class QuantExpressionTests(unittest.TestCase):
              }):
             run_deseq2_cli(args)
 
-        load_counts_from_file.assert_called_once_with(str(precomputed_counts))
+        load_counts_from_file.assert_called_once()
+        self.assertEqual(load_counts_from_file.call_args.args[0], str(precomputed_counts))
+        self.assertEqual(list(load_counts_from_file.call_args.kwargs["metadata_df"].index), ["sample1", "sample2"])
         load_counts_from_salmon.assert_not_called()
 
     def test_run_deseq2_cli_exports_gene_tables_before_deseq(self) -> None:
@@ -244,7 +246,9 @@ class QuantExpressionTests(unittest.TestCase):
             tx2gene=None,
             sample_names=["sample1", "sample2"],
         )
-        load_counts_from_file.assert_called_once_with(str(exported_counts))
+        load_counts_from_file.assert_called_once()
+        self.assertEqual(load_counts_from_file.call_args.args[0], str(exported_counts))
+        self.assertEqual(list(load_counts_from_file.call_args.kwargs["metadata_df"].index), ["sample1", "sample2"])
         load_counts_from_salmon.assert_not_called()
 
     def test_main_all_passes_quant_gene_counts_into_deseq(self) -> None:

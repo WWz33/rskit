@@ -4,6 +4,13 @@ import pandas as pd
 import numpy as np
 from rskit.config import DESeq2Config
 from rskit.core.salmon import SalmonExpressionExporter
+from rskit.input_contracts import (
+    design_columns,
+    load_coldata,
+    orient_sample_table,
+    read_table,
+    validate_sample_alignment,
+)
 from rskit.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -54,7 +61,7 @@ class Deseq2Analyzer:
         
         return counts_df
     
-    def load_counts_from_file(self, counts_file: str) -> pd.DataFrame:
+    def load_counts_from_file(self, counts_file: str, metadata_df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
         """Load count data from file.
         
         Args:
@@ -63,13 +70,11 @@ class Deseq2Analyzer:
         Returns:
             DataFrame with counts (samples x genes)
         """
-        # Auto-detect separator based on file extension
-        sep = '\t' if counts_file.endswith('.tsv') else ','
-        counts_df = pd.read_csv(counts_file, sep=sep, index_col=0)
-        
-        # Check if we need to transpose (genes x samples -> samples x genes)
-        # Heuristic: if columns are mostly numeric-looking sample names, transpose
-        if counts_df.shape[0] > counts_df.shape[1] * 2:
+        counts_df = read_table(counts_file, index_col=0)
+
+        if metadata_df is not None:
+            counts_df = orient_sample_table(counts_df, metadata_df, table_name="counts matrix")
+        elif counts_df.shape[0] > counts_df.shape[1] * 2:
             self.logger.info("Transposing counts matrix to samples x genes format")
             counts_df = counts_df.T
         
@@ -81,7 +86,7 @@ class Deseq2Analyzer:
         
         return counts_df
     
-    def load_metadata(self, metadata_file: str) -> pd.DataFrame:
+    def load_metadata(self, metadata_file: str, required_columns: Optional[List[str]] = None) -> pd.DataFrame:
         """Load metadata from CSV or TSV file.
         
         Expected format:
@@ -100,17 +105,7 @@ class Deseq2Analyzer:
         Returns:
             DataFrame with sample metadata (index=sample names)
         """
-        sep = '\t' if metadata_file.endswith('.tsv') else ','
-        
-        # Read the file
-        metadata_df = pd.read_csv(metadata_file, sep=sep)
-        
-        # Check if 'sample' column exists, if so use it as index
-        if 'sample' in metadata_df.columns:
-            metadata_df = metadata_df.set_index('sample')
-        elif metadata_df.columns[0] != metadata_df.index.name:
-            # Use first column as index if no 'sample' column
-            metadata_df = metadata_df.set_index(metadata_df.columns[0])
+        metadata_df = load_coldata(metadata_file, required_columns=required_columns or [])
         
         self.metadata_df = metadata_df
         self.logger.info(f"Loaded metadata for {metadata_df.shape[0]} samples")
@@ -151,13 +146,8 @@ class Deseq2Analyzer:
             raise ValueError("No metadata provided. Load metadata first.")
         
         # Ensure sample names match
-        common_samples = self.counts_df.index.intersection(self.metadata_df.index)
-        if len(common_samples) == 0:
-            raise ValueError("No common samples between counts and metadata")
-        if len(common_samples) < len(self.counts_df.index):
-            self.logger.warning(f"Only {len(common_samples)} samples match between counts and metadata")
-            self.counts_df = self.counts_df.loc[common_samples]
-            self.metadata_df = self.metadata_df.loc[common_samples]
+        validate_sample_alignment(self.counts_df, self.metadata_df, table_name="counts matrix")
+        self.counts_df = self.counts_df.loc[self.metadata_df.index]
         
         # Initialize inference
         inference = DefaultInference(n_cpus=self.config.n_cpus)
@@ -547,14 +537,14 @@ def run_deseq2_cli(args):
     
     # Load metadata (coldata)
     logger.info(f"Loading metadata from {args.coldata}")
-    metadata_df = analyzer.load_metadata(args.coldata)
+    metadata_df = analyzer.load_metadata(args.coldata, required_columns=design_columns(args.design))
     
     # Load counts
     if args.salmon_dir:
         existing_counts = SalmonExpressionExporter.find_existing_gene_counts(args.salmon_dir)
         if existing_counts is not None:
             logger.info(f"Using precomputed gene counts from {existing_counts}")
-            counts_df = analyzer.load_counts_from_file(str(existing_counts))
+            counts_df = analyzer.load_counts_from_file(str(existing_counts), metadata_df=metadata_df)
         else:
             logger.info(f"Exporting gene-level quantification tables before DESeq2: {args.salmon_dir}")
             expression_outputs = SalmonExpressionExporter().export_gene_tables(
@@ -564,12 +554,12 @@ def run_deseq2_cli(args):
                 tx2gene=args.tx2gene,
                 sample_names=list(metadata_df.index),
             )
-            counts_df = analyzer.load_counts_from_file(expression_outputs["gene_counts"])
+            counts_df = analyzer.load_counts_from_file(expression_outputs["gene_counts"], metadata_df=metadata_df)
         
     elif args.gene_counts:
         # Load from gene counts file
         logger.info(f"Loading gene counts from {args.gene_counts}")
-        counts_df = analyzer.load_counts_from_file(args.gene_counts)
+        counts_df = analyzer.load_counts_from_file(args.gene_counts, metadata_df=metadata_df)
     else:
         raise ValueError("Either --salmon-dir or --gene-counts must be provided")
     
