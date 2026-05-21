@@ -1,8 +1,27 @@
 from pathlib import Path
 from typing import Optional
+from rskit.cli_args import merge_extra_args
 from rskit.core.base import ToolBase, Tool
 from rskit.config import StarConfig
 from rskit.utils.validators import validate_file, check_star_index
+
+STAR_INDEX_PROTECTED_OPTIONS = {
+    "--runThreadN",
+    "--runMode",
+    "--genomeDir",
+    "--genomeFastaFiles",
+    "--sjdbGTFfile",
+}
+
+STAR_ALIGN_PROTECTED_OPTIONS = {
+    "--runThreadN",
+    "--genomeDir",
+    "--readFilesIn",
+    "--readFilesCommand",
+    "--outFileNamePrefix",
+    "--outSAMtype",
+    "--quantMode",
+}
 
 class StarIndexer:
     def __init__(self, config: StarConfig):
@@ -26,6 +45,7 @@ class StarIndexer:
         cmd = ["STAR", "--runThreadN", str(self.config.threads), "--runMode", "genomeGenerate",
                "--genomeDir", str(index_path), "--genomeFastaFiles", genome_fasta,
                "--sjdbGTFfile", gtf_file, "--sjdbOverhang", str(self.config.sjdb_overhang)]
+        cmd = merge_extra_args(cmd, self.config.extra_args, STAR_INDEX_PROTECTED_OPTIONS)
         
         self.logger.info(f"Building STAR index in {index_dir}")
         return self.tool._run_command(cmd)
@@ -72,6 +92,7 @@ class StarAligner:
                "--outFilterMismatchNmax", str(self.config.out_filter_mismatch_nmax),
                "--outFilterMultimapNmax", str(self.config.out_filter_multimap_nmax),
                "--alignSJDBoverhangMin", str(self.config.align_sjdb_overhang_min)]
+        cmd = merge_extra_args(cmd, self.config.extra_args, STAR_ALIGN_PROTECTED_OPTIONS)
         
         self.logger.info(f"Aligning {sample_name or 'sample'} with STAR")
         self.tool._run_command(cmd)

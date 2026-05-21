@@ -21,13 +21,13 @@ def calculate_threads_per_sample(parallel_cores, num_samples):
 
 def process_single_sample(args):
     """Process a single sample: alignment + quantification."""
-    sample_name, sample_data, index_dir, transcript_fasta, workdirs, threads, skip_existing = args
+    sample_name, sample_data, index_dir, transcript_fasta, workdirs, threads, skip_existing, star_args = args
     
     from rskit.core.star import StarAligner
     from rskit.core.salmon import SalmonQuantifier
     from rskit.config import StarConfig, SalmonConfig
     
-    aligner = StarAligner(StarConfig(threads=threads))
+    aligner = StarAligner(StarConfig(threads=threads, extra_args=star_args))
     quantifier = SalmonQuantifier(SalmonConfig(threads=threads))
     
     # Setup output directories
@@ -59,7 +59,15 @@ def process_single_sample(args):
     return sample_name, {"alignment": align_results, "quantification": quant_results}
 
 
-def run_samples_parallel(samples, index_dir, transcript_fasta, workdirs, threads_per_sample, skip_existing=False):
+def run_samples_parallel(
+    samples,
+    index_dir,
+    transcript_fasta,
+    workdirs,
+    threads_per_sample,
+    skip_existing=False,
+    star_args="",
+):
     """Run alignment and quantification for multiple samples in parallel."""
     num_samples = len(samples)
     max_workers = num_samples
@@ -67,7 +75,7 @@ def run_samples_parallel(samples, index_dir, transcript_fasta, workdirs, threads
     logger.info(f"Parallel processing: {num_samples} samples, {threads_per_sample} threads each")
     
     sample_args = [
-        (name, data, index_dir, transcript_fasta, workdirs, threads_per_sample, skip_existing)
+        (name, data, index_dir, transcript_fasta, workdirs, threads_per_sample, skip_existing, star_args)
         for name, data in samples.items()
     ]
     

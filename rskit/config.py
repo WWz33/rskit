@@ -17,6 +17,7 @@ class StarConfig:
     out_sam_unmapped: str = "Within"
     out_filter_type: str = "BySJout"
     quant_transcriptome_sam_output: str = "BanSingleEnd_ExtendSoftclip"
+    extra_args: str = ""
 
 @dataclass
 class SalmonConfig:
