@@ -36,7 +36,7 @@ def merge_extra_args(
 
 
 def _option_names(args: Sequence[str]) -> Set[str]:
-    return {arg for arg in args if _is_option(arg)}
+    return {_option_name(arg) for arg in args if _is_option(arg)}
 
 
 def _remove_replaced_defaults(
@@ -62,3 +62,7 @@ def _remove_replaced_defaults(
 
 def _is_option(arg: str) -> bool:
     return arg.startswith("-") and arg != "-"
+
+
+def _option_name(arg: str) -> str:
+    return arg.split("=", 1)[0]

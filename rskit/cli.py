@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Tuple
+from rskit.cli_args import merge_extra_args
 from rskit.input_contracts import load_coldata, resolve_path_from_table
 from rskit.input_validation import validate_input_files
 from rskit.templates import write_template
@@ -19,6 +20,31 @@ from rskit.core.star import StarIndexer
 from rskit.core.salmon import SalmonExpressionExporter, SalmonQuantifier
 
 logger = get_logger(__name__)
+
+FASTP_PROTECTED_OPTIONS = {
+    "-i",
+    "--in1",
+    "-I",
+    "--in2",
+    "-o",
+    "--out1",
+    "-O",
+    "--out2",
+    "-w",
+    "--thread",
+    "-j",
+    "--json",
+    "-h",
+    "--html",
+    "--stdin",
+    "--stdout",
+    "--interleaved_in",
+    "--unpaired1",
+    "--unpaired2",
+    "--failed_out",
+    "--merged_out",
+    "--overlapped_out",
+}
 
 
 @dataclass
@@ -59,7 +85,14 @@ def setup_workdir(output_dir: str) -> Dict[str, Path]:
     return dirs
 
 
-def trim_reads(read1: Path, read2: Path, sample: str, workdirs: Dict[str, Path], threads: int = 8) -> Tuple[str, str]:
+def trim_reads(
+    read1: Path,
+    read2: Path,
+    sample: str,
+    workdirs: Dict[str, Path],
+    threads: int = 8,
+    fastp_args: str = "",
+) -> Tuple[str, str]:
     """Run fastp trimming"""
     prefix = workdirs['clean_data'] / sample
     cmd = [
@@ -72,6 +105,7 @@ def trim_reads(read1: Path, read2: Path, sample: str, workdirs: Dict[str, Path],
         '-j', str(workdirs['clean_data_json'] / sample) + '.json',
         '-h', str(workdirs['clean_data_html'] / sample) + '.html'
     ]
+    cmd = merge_extra_args(cmd, fastp_args, FASTP_PROTECTED_OPTIONS)
     logger.info(f"[{sample}] Trimming...")
     subprocess.run(cmd, check=True, capture_output=True)
     logger.info(f"[{sample}] Trimming completed")
@@ -87,13 +121,14 @@ def parse_samples_from_coldata(coldata: str):
 
 def trim_sample_wrapper(args):
     """Wrapper for parallel trimming"""
-    sample_name, r1_path, r2_path, workdirs, threads = args
-    r1_clean, r2_clean = trim_reads(r1_path, r2_path, sample_name, workdirs, threads)
+    sample_name, r1_path, r2_path, workdirs, threads, fastp_args = args
+    r1_clean, r2_clean = trim_reads(r1_path, r2_path, sample_name, workdirs, threads, fastp_args)
     return sample_name, r1_clean, r2_clean
 
 
 def prepare_samples(samples_list, workdirs: Dict[str, Path], 
-                    trim: bool, threads: int, parallel: bool = False) -> Dict[str, Dict]:
+                    trim: bool, threads: int, parallel: bool = False,
+                    fastp_args: str = "") -> Dict[str, Dict]:
     """Prepare samples dict with optional trimming"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     
@@ -103,7 +138,7 @@ def prepare_samples(samples_list, workdirs: Dict[str, Path],
             num_samples = len(samples_list)
             logger.info(f"Parallel trimming: {num_samples} samples")
             
-            trim_args = [(name, r1, r2, workdirs, threads) for name, r1, r2 in samples_list]
+            trim_args = [(name, r1, r2, workdirs, threads, fastp_args) for name, r1, r2 in samples_list]
             
             samples = {}
             with ThreadPoolExecutor(max_workers=num_samples) as executor:
@@ -116,7 +151,7 @@ def prepare_samples(samples_list, workdirs: Dict[str, Path],
             # Sequential trimming
             samples = {}
             for sample_name, r1_path, r2_path in samples_list:
-                r1_clean, r2_clean = trim_reads(r1_path, r2_path, sample_name, workdirs, threads)
+                r1_clean, r2_clean = trim_reads(r1_path, r2_path, sample_name, workdirs, threads, fastp_args)
                 samples[sample_name] = {'fq1': r1_clean, 'fq2': r2_clean}
     else:
         samples = {name: {'fq1': str(r1), 'fq2': str(r2)} for name, r1, r2 in samples_list}
@@ -187,6 +222,7 @@ def main_quant(args):
     """Run quantification pipeline"""
     star_args = getattr(args, "star_args", "")
     salmon_args = getattr(args, "salmon_args", "")
+    fastp_args = getattr(args, "fastp_args", "")
 
     # Convert paths to absolute
     r1 = Path(args.r1).resolve() if args.r1 else None
@@ -220,7 +256,14 @@ def main_quant(args):
         threads_per_sample = args.threads
     
     # Prepare and run samples
-    samples = prepare_samples(samples_list, workdirs, args.trim, threads_per_sample, parallel=use_parallel)
+    samples = prepare_samples(
+        samples_list,
+        workdirs,
+        args.trim,
+        threads_per_sample,
+        parallel=use_parallel,
+        fastp_args=fastp_args,
+    )
     results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
                                  index_dir, workdirs, threads_per_sample, use_parallel, args.skip_existing,
                                  star_args=star_args, salmon_args=salmon_args)
@@ -307,6 +350,7 @@ def main_all(args):
     """Run complete pipeline: quant -> deseq2"""
     star_args = getattr(args, "star_args", "")
     salmon_args = getattr(args, "salmon_args", "")
+    fastp_args = getattr(args, "fastp_args", "")
 
     logger.info("="*60)
     logger.info("Complete Pipeline: Quantification + DESeq2")
@@ -342,7 +386,14 @@ def main_all(args):
     logger.info("Step 1: Quantification Pipeline")
     logger.info("="*60)
     
-    samples = prepare_samples(samples_list, workdirs, args.trim, threads_per_sample, parallel=use_parallel)
+    samples = prepare_samples(
+        samples_list,
+        workdirs,
+        args.trim,
+        threads_per_sample,
+        parallel=use_parallel,
+        fastp_args=fastp_args,
+    )
     results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
                                  index_dir, workdirs, threads_per_sample, use_parallel, args.skip_existing,
                                  star_args=star_args, salmon_args=salmon_args)
@@ -417,6 +468,8 @@ def main():
         help="Advanced STAR arguments. User values replace rskit defaults unless the option manages inputs, outputs, index, or threads.")
     parser_quant.add_argument("--salmon-args", default="",
         help="Advanced Salmon quant arguments. User values replace rskit defaults unless the option manages inputs, outputs, library type, or threads.")
+    parser_quant.add_argument("--fastp-args", default="",
+        help="Advanced fastp arguments. User values replace rskit defaults unless the option manages inputs, outputs, reports, or threads.")
     parser_quant.set_defaults(func=main_quant)
     
     # deseq2 command
@@ -585,6 +638,8 @@ Examples:
         help="Advanced STAR arguments. User values replace rskit defaults unless the option manages inputs, outputs, index, or threads.")
     parser_all.add_argument("--salmon-args", default="",
         help="Advanced Salmon quant arguments. User values replace rskit defaults unless the option manages inputs, outputs, library type, or threads.")
+    parser_all.add_argument("--fastp-args", default="",
+        help="Advanced fastp arguments. User values replace rskit defaults unless the option manages inputs, outputs, reports, or threads.")
     parser_all.add_argument("-d", "--design", default="~condition",
         help="Design formula (e.g., '~condition', '~batch + condition')")
     parser_all.add_argument("-c", "--contrast",
