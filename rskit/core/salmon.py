@@ -5,12 +5,26 @@ import numpy as np
 import pandas as pd
 
 from rskit.core.base import Tool
+from rskit.cli_args import merge_extra_args
 from rskit.config import SalmonConfig
 from rskit.utils.gtf import open as gtf_open
 from rskit.utils.logger import get_logger
 from rskit.utils.validators import validate_file
 
 logger = get_logger(__name__)
+
+SALMON_QUANT_PROTECTED_OPTIONS = {
+    "-t",
+    "--targets",
+    "-a",
+    "--alignments",
+    "-o",
+    "--output",
+    "-p",
+    "--threads",
+    "-l",
+    "--libType",
+}
 
 class SalmonQuantifier:
     def __init__(self, config: SalmonConfig):
@@ -41,6 +55,7 @@ class SalmonQuantifier:
             cmd.append("--gcBias")
         if self.config.pos_bias:
             cmd.append("--posBias")
+        cmd = merge_extra_args(cmd, self.config.extra_args, SALMON_QUANT_PROTECTED_OPTIONS)
         
         self.logger.info(f"Quantifying {sample_name or 'sample'} with Salmon")
         self.tool._run_command(cmd)

@@ -26,6 +26,7 @@ class SalmonConfig:
     seq_bias: bool = True
     gc_bias: bool = True
     pos_bias: bool = True
+    extra_args: str = ""
 
 @dataclass
 class DESeq2Config:

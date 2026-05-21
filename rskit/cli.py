@@ -137,17 +137,18 @@ def build_index_if_needed(index_dir: Path, genome_fasta: str, gtf_file: str,
 def run_quantification(samples: Dict[str, Dict], genome_fasta: str, gtf_file: str,
                        transcript_fasta: str, index_dir: Path, workdirs: Dict[str, Path],
                        threads_per_sample: int, parallel: bool, skip_existing: bool = False,
-                       star_args: str = "") -> Dict:
+                       star_args: str = "", salmon_args: str = "") -> Dict:
     """Run quantification pipeline (parallel or sequential)"""
     num_samples = len(samples)
     
     if parallel and num_samples > 1:
         return run_samples_parallel(samples, str(index_dir), transcript_fasta, 
-                                    workdirs, threads_per_sample, skip_existing, star_args=star_args)
+                                    workdirs, threads_per_sample, skip_existing,
+                                    star_args=star_args, salmon_args=salmon_args)
     else:
         config = PipelineConfig(
             star=StarConfig(threads=threads_per_sample, extra_args=star_args),
-            salmon=SalmonConfig(threads=threads_per_sample),
+            salmon=SalmonConfig(threads=threads_per_sample, extra_args=salmon_args),
             output_dir=str(workdirs['bam'])
         )
         pipeline = RNAseqPipeline(config)
@@ -185,6 +186,7 @@ def export_quant_expression_tables(
 def main_quant(args):
     """Run quantification pipeline"""
     star_args = getattr(args, "star_args", "")
+    salmon_args = getattr(args, "salmon_args", "")
 
     # Convert paths to absolute
     r1 = Path(args.r1).resolve() if args.r1 else None
@@ -221,7 +223,7 @@ def main_quant(args):
     samples = prepare_samples(samples_list, workdirs, args.trim, threads_per_sample, parallel=use_parallel)
     results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
                                  index_dir, workdirs, threads_per_sample, use_parallel, args.skip_existing,
-                                 star_args=star_args)
+                                 star_args=star_args, salmon_args=salmon_args)
     expression_outputs = export_quant_expression_tables(
         quant_dir=workdirs['quant'],
         gtf_file=gtf_file,
@@ -304,6 +306,7 @@ def main_template(args):
 def main_all(args):
     """Run complete pipeline: quant -> deseq2"""
     star_args = getattr(args, "star_args", "")
+    salmon_args = getattr(args, "salmon_args", "")
 
     logger.info("="*60)
     logger.info("Complete Pipeline: Quantification + DESeq2")
@@ -342,7 +345,7 @@ def main_all(args):
     samples = prepare_samples(samples_list, workdirs, args.trim, threads_per_sample, parallel=use_parallel)
     results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
                                  index_dir, workdirs, threads_per_sample, use_parallel, args.skip_existing,
-                                 star_args=star_args)
+                                 star_args=star_args, salmon_args=salmon_args)
     logger.info(f"Quantification completed. Processed {len(results)} samples.")
     expression_outputs = export_quant_expression_tables(
         quant_dir=workdirs['quant'],
@@ -412,6 +415,8 @@ def main():
     parser_quant.add_argument("-se", "--skip-existing", action="store_true", help="Skip samples if output already exists")
     parser_quant.add_argument("--star-args", default="",
         help="Advanced STAR arguments. User values replace rskit defaults unless the option manages inputs, outputs, index, or threads.")
+    parser_quant.add_argument("--salmon-args", default="",
+        help="Advanced Salmon quant arguments. User values replace rskit defaults unless the option manages inputs, outputs, library type, or threads.")
     parser_quant.set_defaults(func=main_quant)
     
     # deseq2 command
@@ -578,6 +583,8 @@ Examples:
         help="Skip samples if output already exists")
     parser_all.add_argument("--star-args", default="",
         help="Advanced STAR arguments. User values replace rskit defaults unless the option manages inputs, outputs, index, or threads.")
+    parser_all.add_argument("--salmon-args", default="",
+        help="Advanced Salmon quant arguments. User values replace rskit defaults unless the option manages inputs, outputs, library type, or threads.")
     parser_all.add_argument("-d", "--design", default="~condition",
         help="Design formula (e.g., '~condition', '~batch + condition')")
     parser_all.add_argument("-c", "--contrast",
