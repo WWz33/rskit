@@ -81,6 +81,16 @@ rskit quant -s sample1 -1 sample1_R1.fq.gz -2 sample1_R2.fq.gz -g genome.fa -gtf
 rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
 ```
 
+### I need to tune STAR, Salmon, or fastp
+
+Pass advanced tool arguments as a quoted string. If an allowed argument conflicts with an rskit default, the user-provided value replaces the default. rskit rejects arguments that would change managed inputs, outputs, reports, indexes, library type, or thread counts.
+
+```bash
+rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ --star-args "--outFilterMultimapNmax 8"
+rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ --salmon-args "--validateMappings --minScoreFraction 0.95"
+rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ -tr --fastp-args "--length_required 30 --cut_front"
+```
+
 ### I already have gene counts and want DESeq2
 
 Use a matrix directly, or point at a `quant` output directory and let rskit reuse `gene_counts.csv` or `gene_counts.tsv` when present.
@@ -139,6 +149,9 @@ Complete pipeline: quantification + DESeq2 analysis.
 | `-tr` | `--trim` | Run fastp before alignment and use trimmed FASTQ files. |
 | `-fi` | `--force-index` | Rebuild the STAR index even when an index directory already exists. |
 | `-se` | `--skip-existing` | Skip sample-level work when expected output files already exist. |
+| n/a | `--star-args` | Advanced STAR arguments. Allowed conflicts replace rskit defaults; protected options include `--runThreadN`, `--genomeDir`, `--readFilesIn`, `--readFilesCommand`, `--outFileNamePrefix`, `--outSAMtype`, `--quantMode`, `--genomeFastaFiles`, and `--sjdbGTFfile`. |
+| n/a | `--salmon-args` | Advanced `salmon quant` arguments. Allowed conflicts replace rskit defaults; protected options include `-t`/`--targets`, `-a`/`--alignments`, `-o`/`--output`, `-p`/`--threads`, and `-l`/`--libType`. |
+| n/a | `--fastp-args` | Advanced fastp arguments used only with `--trim`. Allowed conflicts replace rskit defaults; protected options include `-i`/`--in1`, `-I`/`--in2`, `-o`/`--out1`, `-O`/`--out2`, `-w`/`--thread`, report paths, STDIN/STDOUT, and extra output-file options. |
 | `-d` | `--design` | DESeq2 design formula; every referenced column must exist in coldata. Default: `~condition`. |
 | `-c` | `--contrast` | DESeq2 contrast as `factor,level1,level2`; factor and levels are validated against coldata. |
 | `-a` | `--alpha` | Adjusted p-value threshold used for significance summaries. Default: `0.05`. |
@@ -165,6 +178,9 @@ Complete quantification pipeline: index -> align -> quant -> gene-level table ex
 | `-tr` | `--trim` | Run fastp before alignment. |
 | `-fi` | `--force-index` | Rebuild the STAR index even if it exists. |
 | `-se` | `--skip-existing` | Skip sample work when expected output already exists. |
+| n/a | `--star-args` | Advanced STAR arguments. Allowed conflicts replace rskit defaults; protected options include `--runThreadN`, `--genomeDir`, `--readFilesIn`, `--readFilesCommand`, `--outFileNamePrefix`, `--outSAMtype`, `--quantMode`, `--genomeFastaFiles`, and `--sjdbGTFfile`. |
+| n/a | `--salmon-args` | Advanced `salmon quant` arguments. Allowed conflicts replace rskit defaults; protected options include `-t`/`--targets`, `-a`/`--alignments`, `-o`/`--output`, `-p`/`--threads`, and `-l`/`--libType`. |
+| n/a | `--fastp-args` | Advanced fastp arguments used only with `--trim`. Allowed conflicts replace rskit defaults; protected options include `-i`/`--in1`, `-I`/`--in2`, `-o`/`--out1`, `-O`/`--out2`, `-w`/`--thread`, report paths, STDIN/STDOUT, and extra output-file options. |
 
 ### `rskit deseq2`
 

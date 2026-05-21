@@ -81,6 +81,16 @@ rskit quant -s sample1 -1 sample1_R1.fq.gz -2 sample1_R2.fq.gz -g genome.fa -gtf
 rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
 ```
 
+### 我需要调整 STAR、Salmon 或 fastp 参数
+
+把底层软件的高级参数作为一个带引号的字符串传入。如果允许覆盖的参数与 rskit 默认值冲突，用户传入的值会替换默认值。rskit 会拒绝会改变输入、输出、报告、index、library type 或线程数的参数。
+
+```bash
+rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ --star-args "--outFilterMultimapNmax 8"
+rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ --salmon-args "--validateMappings --minScoreFraction 0.95"
+rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ -tr --fastp-args "--length_required 30 --cut_front"
+```
+
 ### 我已经有 gene counts，想直接做 DESeq2
 
 可以直接提供矩阵，也可以指向 `quant` 输出目录，让 rskit 优先复用已有的 `gene_counts.csv` 或 `gene_counts.tsv`。
@@ -139,6 +149,9 @@ sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
 | `-tr` | `--trim` | alignment 前运行 fastp，并使用修剪后的 FASTQ。 |
 | `-fi` | `--force-index` | 即使 index 目录已存在，也强制重建 STAR index。 |
 | `-se` | `--skip-existing` | 目标输出已存在时跳过对应样本任务。 |
+| n/a | `--star-args` | STAR 高级参数。允许覆盖的冲突参数会替换 rskit 默认值；受保护参数包括 `--runThreadN`、`--genomeDir`、`--readFilesIn`、`--readFilesCommand`、`--outFileNamePrefix`、`--outSAMtype`、`--quantMode`、`--genomeFastaFiles` 和 `--sjdbGTFfile`。 |
+| n/a | `--salmon-args` | `salmon quant` 高级参数。允许覆盖的冲突参数会替换 rskit 默认值；受保护参数包括 `-t`/`--targets`、`-a`/`--alignments`、`-o`/`--output`、`-p`/`--threads` 和 `-l`/`--libType`。 |
+| n/a | `--fastp-args` | fastp 高级参数，只在使用 `--trim` 时生效。允许覆盖的冲突参数会替换 rskit 默认值；受保护参数包括 `-i`/`--in1`、`-I`/`--in2`、`-o`/`--out1`、`-O`/`--out2`、`-w`/`--thread`、报告路径、STDIN/STDOUT 和额外输出文件参数。 |
 | `-d` | `--design` | DESeq2 design formula；引用的每一列都必须存在于 coldata。默认：`~condition`。 |
 | `-c` | `--contrast` | DESeq2 contrast，格式为 `factor,level1,level2`；factor 和 level 会按 coldata 校验。 |
 | `-a` | `--alpha` | summary 使用的 adjusted p-value 阈值。默认：`0.05`。 |
@@ -165,6 +178,9 @@ sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
 | `-tr` | `--trim` | alignment 前运行 fastp。 |
 | `-fi` | `--force-index` | 即使 STAR index 已存在也强制重建。 |
 | `-se` | `--skip-existing` | 目标输出已存在时跳过样本任务。 |
+| n/a | `--star-args` | STAR 高级参数。允许覆盖的冲突参数会替换 rskit 默认值；受保护参数包括 `--runThreadN`、`--genomeDir`、`--readFilesIn`、`--readFilesCommand`、`--outFileNamePrefix`、`--outSAMtype`、`--quantMode`、`--genomeFastaFiles` 和 `--sjdbGTFfile`。 |
+| n/a | `--salmon-args` | `salmon quant` 高级参数。允许覆盖的冲突参数会替换 rskit 默认值；受保护参数包括 `-t`/`--targets`、`-a`/`--alignments`、`-o`/`--output`、`-p`/`--threads` 和 `-l`/`--libType`。 |
+| n/a | `--fastp-args` | fastp 高级参数，只在使用 `--trim` 时生效。允许覆盖的冲突参数会替换 rskit 默认值；受保护参数包括 `-i`/`--in1`、`-I`/`--in2`、`-o`/`--out1`、`-O`/`--out2`、`-w`/`--thread`、报告路径、STDIN/STDOUT 和额外输出文件参数。 |
 
 ### `rskit deseq2`
 
