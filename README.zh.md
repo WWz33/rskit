@@ -33,15 +33,17 @@ pip install -e .
 
 ### 依赖
 
-- Python >= 3.8
-- pandas
-- numpy
-- pydeseq2
-- pytximport
-- PyWGCNA
-- STAR
-- Salmon
-- fastp (optional)
+| 依赖 | 版本 |
+|------|------|
+| Python | >= 3.8 |
+| pandas | 3.0.3 |
+| numpy | 2.5.0 |
+| pydeseq2 | 0.5.4 |
+| pytximport | 0.13.0 |
+| PyWGCNA | 2.2.1 |
+| STAR | 2.7.11b |
+| Salmon | 2.2.1 |
+| fastp | 1.3.6 (optional) |
 
 ## 用户场景
 
@@ -65,10 +67,11 @@ rskit doctor -S coldata.csv -e expression.csv
 
 ### 我有 FASTQ 文件，想跑完整 RNA-seq 流程
 
-运行 alignment、Salmon quantification、基因级导出和 DESeq2。`quant` 会在 DESeq2 使用基因级 counts 前创建 `tx2gene.tsv`、`gene_counts.csv`、`gene_tpm.csv` 和 `gene_log2_tpm_plus1.csv`。
+运行 alignment、Salmon quantification、基因级导出和 DESeq2。`quant` 会在 DESeq2 使用基因级 counts 前创建 `tx2gene.tsv`、`gene_counts.csv`、`gene_tpm.csv` 和 `gene_log2_tpm.csv`。
 
 ```bash
 rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
+rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ -t 100 -j 20
 rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ -d "~batch + condition"
 ```
 
@@ -79,7 +82,11 @@ rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o 
 ```bash
 rskit quant -s sample1 -1 sample1_R1.fq.gz -2 sample1_R2.fq.gz -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
 rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
+rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ -t 100 -j 20
+rskit quant -s sample1 -1 sample1_R1.fq.gz -2 sample1_R2.fq.gz -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ -ms
 ```
+
+默认批量定量为 `-j 1`。`-t/--threads` 是总线程数，`-j/--jobs` 是并发样本数；例如 `-t 100 -j 20` 为每个样本分配 5 线程。使用 `-ms/--merge-sf` 时，会从所有 `03_quant/*/quant.sf` 重新生成基因级 CSV。
 
 ### 我需要调整 STAR、Salmon 或 fastp 参数
 
@@ -102,14 +109,16 @@ rskit deseq2 -sd ./03_quant -S coldata.csv -gtf annotation.gtf -d "~batch + cond
 
 ### 我想分析共表达模块
 
-expression matrix 使用 rows = samples、columns = genes。有 coldata 和 gene metadata 时一起提供。
+expression matrix 使用 rows = genes、columns = samples。有 coldata 和 gene metadata 时一起提供。
 
 ```bash
 rskit wgcna -e expression.csv -o ./wgcna_results
 rskit wgcna -e expression.csv -S coldata.csv -G gene_info.csv -o ./wgcna_results
 ```
 
-## Coldata 格式
+## Format（格式说明）
+
+### `coldata.csv`
 
 所有子命令都使用同一个 `--coldata` / `-S` 参数。
 
@@ -127,7 +136,36 @@ sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
 - `deseq2`: `sample` 加上 `--design` 引用的所有 metadata 列；默认 `~condition` 需要 `condition`
 - `wgcna`: `sample` 加任意 metadata 列
 
-相对路径形式的 `r1` 和 `r2` 会按 coldata 文件所在目录解析。Count 和 expression matrix 期望使用 rows = samples、columns = genes。如果 DESeq2 counts 文件是 genes x samples，只有当 coldata 的 sample ID 与 counts 的列名匹配时才会转置。定向之后，sample ID 必须与 coldata 完全一致；rskit 不会静默丢弃或取交集。
+`r1` 和 `r2` 是 FASTQ 路径，可以相对 `coldata.csv`。
+
+### `counts.csv`
+
+用于 `rskit deseq2 -gc`。
+
+```csv
+gene_id,sample1,sample2,sample3,sample4
+geneA,10,12,80,77
+geneB,0,1,4,5
+```
+
+- rows: genes
+- columns: samples
+- 第一列：gene ID
+
+### `expression.csv`
+
+用于 `rskit wgcna -e`。数值为 **TPM**（或任意归一化表达量），不是原始 counts —— `wgcna` 不要求整数。可直接用 `rskit quant`/`rskit all` 产出的 `gene_tpm.csv`，或 `gene_log2_tpm.csv`/对数转换矩阵；不建议用原始 `gene_counts.csv` 跑 WGCNA。
+
+```csv
+gene_id,sample1,sample2,sample3,sample4
+geneA,3.46,3.70,6.34,6.29
+geneB,0.00,1.00,2.32,2.58
+```
+
+- rows: genes
+- columns: samples
+- 第一列：gene ID
+- 数值：归一化表达量（推荐 TPM）；文件名 `expression.csv` 是通用命名 —— `counts.csv` 专用于 `deseq2` 消费的整数 count 矩阵，二者刻意区分
 
 ## 命令参考
 
@@ -144,8 +182,9 @@ sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
 | `-o` | `--output-dir` | 必需的流程输出目录；rskit 会在其中创建 `00_index/`、`02_bam/`、`03_quant/` 和 `04_deseq2/`。 |
 | `-idx` | `--index-dir` | 可选的已有 STAR index 目录；默认使用 `<output-dir>/00_index`。 |
 | `-t2g` | `--tx2gene` | 可选 transcript-to-gene mapping；未提供时从 `--gtf-file` 写出 `03_quant/tx2gene.tsv`。 |
-| `-t` | `--threads` | 顺序运行时每个样本的线程数；也作为 index 和 DESeq2 的默认线程设置。 |
-| `-p` | `--parallel` | 多样本并行使用的总核心数；rskit 会按样本数分配。 |
+| `-t` | `--threads` | 样本处理使用的总线程预算。默认：`8`。 |
+| `-j` | `--jobs` | 同时处理的最大样本数。默认：`1`。 |
+| `-ms` | `--merge-sf` | 扫描所有 `03_quant/*/quant.sf` 并重新生成基因级 CSV。 |
 | `-tr` | `--trim` | alignment 前运行 fastp，并使用修剪后的 FASTQ。 |
 | `-fi` | `--force-index` | 即使 index 目录已存在，也强制重建 STAR index。 |
 | `-se` | `--skip-existing` | 目标输出已存在时跳过对应样本任务。 |
@@ -156,6 +195,7 @@ sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
 | `-c` | `--contrast` | DESeq2 contrast，格式为 `factor,level1,level2`；factor 和 level 会按 coldata 校验。 |
 | `-a` | `--alpha` | summary 使用的 adjusted p-value 阈值。默认：`0.05`。 |
 | `-l` | `--lfc` | summary 使用的绝对 log2 fold-change 阈值。默认：`2.0`。 |
+| `-F` | `--min-count` | DESeq2 预过滤的 gene total count 下限。默认：`10`；设为 `0` 可关闭。 |
 
 ### `rskit quant`
 
@@ -173,8 +213,9 @@ sample4,treat,treatment,sample4_R1.fq.gz,sample4_R2.fq.gz
 | `-o` | `--output-dir` | 必需输出/工作目录。 |
 | `-idx` | `--index-dir` | 可选已有 STAR index 目录；默认使用 `<output-dir>/00_index`。 |
 | `-t2g` | `--tx2gene` | 可选 transcript-to-gene mapping，用于基因级导出；未提供时从 `--gtf-file` 生成。 |
-| `-t` | `--threads` | 每个样本使用的线程数。默认：`8`。 |
-| `-p` | `--parallel` | 多样本并行执行使用的总核心数。 |
+| `-t` | `--threads` | 样本处理使用的总线程预算。默认：`8`。 |
+| `-j` | `--jobs` | 同时处理的最大样本数。默认：`1`。 |
+| `-ms` | `--merge-sf` | 扫描所有 `03_quant/*/quant.sf` 并重新生成基因级 CSV。 |
 | `-tr` | `--trim` | alignment 前运行 fastp。 |
 | `-fi` | `--force-index` | 即使 STAR index 已存在也强制重建。 |
 | `-se` | `--skip-existing` | 目标输出已存在时跳过样本任务。 |
@@ -189,7 +230,7 @@ DESeq2 差异表达分析。
 | 简写 | 长参数 | 说明 |
 |------|--------|------|
 | `-sd` | `--salmon-dir` | 包含 Salmon `quant.sf` 文件夹或预计算 `gene_counts.csv`/`gene_counts.tsv` 的目录；与 `--gene-counts` 互斥。 |
-| `-gc` | `--gene-counts` | Gene counts matrix 文件；与 `--salmon-dir` 互斥。 |
+| `-gc` | `--gene-counts` | Gene counts matrix 文件，rows = genes、columns = samples；与 `--salmon-dir` 互斥。 |
 | `-S` | `--coldata` | 必需 metadata 文件，包含 `sample` 和 `--design` 引用的所有列。 |
 | `-gtf` | `--gtf` | GTF/GFF annotation；从 `quant.sf` 导入且没有 `--tx2gene` 时需要。 |
 | `-t2g` | `--tx2gene` | 从 Salmon 输出导入时使用的可选 transcript-to-gene mapping。 |
@@ -199,9 +240,12 @@ DESeq2 差异表达分析。
 | `-c` | `--contrast` | Contrast，格式为 `factor,level1,level2`；加载 counts 前按 coldata 校验。 |
 | `-a` | `--alpha` | summary 使用的 adjusted p-value 阈值。默认：`0.05`。 |
 | `-l` | `--lfc` | summary 使用的绝对 log2 fold-change 阈值。默认：`2.0`。 |
+| `-F` | `--min-count` | DESeq2 预过滤的 gene total count 下限。默认：`10`；设为 `0` 可关闭。 |
 | `-t` | `--threads` | PyDESeq2 inference 使用的 CPU 数。 |
 
-当 `--salmon-dir` 指向 `quant` 输出目录时，`deseq2` 会优先复用已有的 `gene_counts.csv` 或 `gene_counts.tsv`。只有不存在预计算 gene counts 时，才会从 `quant.sf` 重新导入。Metadata sample IDs 和 count matrix sample IDs 必须完全匹配。
+当 `--salmon-dir` 指向 `quant` 输出目录时，`deseq2` 会优先复用已有的 `gene_counts.csv` 或 `gene_counts.tsv`。只有不存在预计算 gene counts 时，才会扫描所有 `quant.sf` 重新导入。Metadata sample IDs 和 count matrix sample IDs 必须完全匹配。
+
+运行 PyDESeq2 前，rskit 会按 `--min-count` 过滤低 counts 基因。
 
 `--contrast` 必须使用 `factor,level1,level2` 格式。factor 必须是 coldata 中的列，两个 level 也必须真实存在于该列；rskit 会在加载 counts 或运行 DESeq2 之前完成校验。
 
@@ -214,8 +258,8 @@ DESeq2 差异表达分析。
 | `-S` | `--coldata` | 必需 coldata 文件，包含 `sample` 列。 |
 | `-d` | `--design` | 用于检查 metadata 必需列的 DESeq2 design formula。默认：`~condition`。 |
 | `-r` | `--check-reads` | 要求存在 `r1`/`r2` 列，并检查 read 文件是否存在。 |
-| `-gc` | `--gene-counts` | 可选 gene counts matrix，用于按 coldata sample ID 校验。 |
-| `-e` | `--expression` | 可选 expression matrix，用于按 coldata sample ID 校验。 |
+| `-gc` | `--gene-counts` | 可选 genes x samples count matrix，用于按 coldata sample ID 校验。 |
+| `-e` | `--expression` | 可选 genes x samples expression matrix，用于按 coldata sample ID 校验。 |
 
 ### `rskit template`
 
@@ -233,9 +277,9 @@ WGCNA 共表达网络分析。
 
 | 简写 | 长参数 | 说明 |
 |------|--------|------|
-| `-e` | `--expression` | 必需 expression matrix；rows 必须是 samples，columns 是 genes。 |
+| `-e` | `--expression` | 必需 expression matrix；rows 必须是 genes，columns 是 samples。 |
 | `-o` | `--output-dir` | 必需 WGCNA 输出目录。 |
-| `-S` | `--coldata` | 可选 sample metadata 文件；sample ID 必须匹配 expression rows。 |
+| `-S` | `--coldata` | 可选 sample metadata 文件；sample ID 必须匹配 expression columns。 |
 | `-G` | `--gene-info` | 可选 gene metadata 文件，按 gene ID 作为 index。 |
 | `-sp` (`-sep`) | `--sep` | 可选分隔符覆盖；默认 `.csv` 用逗号，`.tsv`/`.txt` 用 tab。 |
 | `-n` | `--name` | 存入 PyWGCNA object 的分析名称。默认：`WGCNA`。 |
@@ -284,7 +328,7 @@ results = pipeline.run(
 from rskit.core.deseq2 import Deseq2Analyzer
 from rskit.config import DESeq2Config
 
-config = DESeq2Config(alpha=0.05, lfc_threshold=2.0)
+config = DESeq2Config(alpha=0.05, lfc_threshold=2.0, prefilter_min_count=10)
 analyzer = Deseq2Analyzer(config)
 
 metadata_df = analyzer.load_metadata("coldata.csv", required_columns=["condition"])
@@ -331,7 +375,7 @@ analyzer.save_results()
 ├── <sample>/quant.sf
 ├── gene_counts.csv
 ├── gene_tpm.csv
-├── gene_log2_tpm_plus1.csv
+├── gene_log2_tpm.csv
 └── tx2gene.tsv
 ```
 
@@ -368,12 +412,3 @@ wgcna_results/
 ├── WGCNA.p
 └── module_info.csv
 ```
-
-## 文件格式说明
-
-- CSV/TSV 分隔符由文件扩展名自动识别
-- Gene expression matrices 使用 rows = samples、columns = genes
-- DESeq2 count matrices 只有在 coldata sample IDs 能识别 count columns 时，才可以用 genes x samples 形式提供
-- DESeq2 metadata 必须包含 `sample` 和 `--design` 引用的所有列
-- Matrix sample IDs 必须与 coldata sample IDs 完全一致
-- Gene metadata 应使用第一列作为 gene identifier

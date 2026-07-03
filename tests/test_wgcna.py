@@ -24,11 +24,11 @@ class WGCNAAnalyzerTests(unittest.TestCase):
         ).to_csv(coldata)
         return coldata
 
-    def test_load_data_accepts_samples_as_expression_rows(self) -> None:
+    def test_load_data_accepts_genes_as_expression_rows(self) -> None:
         expression = self.root / "expression.csv"
         pd.DataFrame(
-            {"geneA": [1.0, 2.0], "geneB": [3.0, 4.0]},
-            index=pd.Index(["sample1", "sample2"], name="sample"),
+            {"sample1": [1.0, 3.0], "sample2": [2.0, 4.0]},
+            index=pd.Index(["geneA", "geneB"], name="gene_id"),
         ).to_csv(expression)
         coldata = self._write_coldata()
 
@@ -43,13 +43,14 @@ class WGCNAAnalyzerTests(unittest.TestCase):
         passed_gene_expr = fake_wgcna.call_args.kwargs["geneExp"]
         passed_sample_info = fake_wgcna.call_args.kwargs["sampleInfo"]
         self.assertEqual(list(passed_gene_expr.index), ["sample1", "sample2"])
+        self.assertEqual(list(passed_gene_expr.columns), ["geneA", "geneB"])
         self.assertEqual(list(passed_sample_info.index), ["sample1", "sample2"])
 
     def test_load_data_auto_detects_tsv_inputs(self) -> None:
         expression = self.root / "expression.tsv"
         pd.DataFrame(
-            {"geneA": [1.0, 2.0], "geneB": [3.0, 4.0]},
-            index=pd.Index(["sample1", "sample2"], name="sample"),
+            {"sample1": [1.0, 3.0], "sample2": [2.0, 4.0]},
+            index=pd.Index(["geneA", "geneB"], name="gene_id"),
         ).to_csv(expression, sep="\t")
         coldata = self.root / "coldata.tsv"
         pd.DataFrame(
@@ -81,23 +82,32 @@ class WGCNAAnalyzerTests(unittest.TestCase):
         self.assertEqual(list(passed_sample_info.columns), ["condition"])
         self.assertEqual(list(passed_gene_info.index), ["geneA", "geneB"])
 
-    def test_load_data_rejects_transposed_expression_matrix(self) -> None:
+    def test_load_data_warns_when_expression_looks_samples_by_genes(self) -> None:
         expression = self.root / "expression.csv"
         pd.DataFrame(
-            {"sample1": [1.0, 2.0], "sample2": [3.0, 4.0]},
-            index=pd.Index(["geneA", "geneB"], name="gene"),
+            {"geneA": [1.0, 2.0], "geneB": [3.0, 4.0], "geneC": [5.0, 6.0]},
+            index=pd.Index(["sample1", "sample2"], name="sample"),
         ).to_csv(expression)
         coldata = self._write_coldata()
 
-        analyzer = WGCNAAnalyzer(output_dir=str(self.root / "out"))
-        with self.assertRaisesRegex(ValueError, "appears transposed"):
+        fake_wgcna = mock.Mock(return_value="wgcna-object")
+        fake_module = types.SimpleNamespace(WGCNA=fake_wgcna)
+
+        with mock.patch.dict(sys.modules, {"PyWGCNA": fake_module}), \
+             self.assertLogs("rskit.core.wgcna", level="WARNING") as logs:
+            analyzer = WGCNAAnalyzer(output_dir=str(self.root / "out"))
             analyzer.load_data(str(expression), coldata=str(coldata))
+
+        self.assertIn("genes x samples", "\n".join(logs.output))
+        passed_gene_expr = fake_wgcna.call_args.kwargs["geneExp"]
+        self.assertEqual(list(passed_gene_expr.index), ["sample1", "sample2"])
+        self.assertEqual(list(passed_gene_expr.columns), ["geneA", "geneB", "geneC"])
 
     def test_load_data_rejects_missing_metadata_samples(self) -> None:
         expression = self.root / "expression.csv"
         pd.DataFrame(
-            {"geneA": [1.0], "geneB": [3.0]},
-            index=pd.Index(["sample1"], name="sample"),
+            {"sample1": [1.0, 3.0]},
+            index=pd.Index(["geneA", "geneB"], name="gene_id"),
         ).to_csv(expression)
         coldata = self._write_coldata()
 

@@ -209,17 +209,17 @@ class SalmonExpressionExporter:
             output_type="xarray",
         )
 
-        counts = self._to_dataframe(dataset, "counts", resolved_sample_names).T
-        counts.index.name = "sample"
-        tpm = self._to_dataframe(dataset, "abundance", resolved_sample_names).T
-        tpm.index.name = "sample"
+        counts = self._to_dataframe(dataset, "counts", resolved_sample_names)
+        counts.index.name = "gene_id"
+        tpm = self._to_dataframe(dataset, "abundance", resolved_sample_names)
+        tpm.index.name = "gene_id"
         log_tpm = np.log2(tpm + 1.0)
-        log_tpm.index.name = "sample"
+        log_tpm.index.name = "gene_id"
 
         return {
             "counts": counts,
             "tpm": tpm,
-            "log2_tpm_plus1": log_tpm,
+            "log2_tpm": log_tpm,
         }
 
     def export_gene_tables(
@@ -248,13 +248,13 @@ class SalmonExpressionExporter:
         outputs = {
             "gene_counts": output_path / "gene_counts.csv",
             "gene_tpm": output_path / "gene_tpm.csv",
-            "gene_log2_tpm_plus1": output_path / "gene_log2_tpm_plus1.csv",
+            "gene_log2_tpm": output_path / "gene_log2_tpm.csv",
             "tx2gene": output_path / "tx2gene.tsv",
         }
 
         tables["counts"].to_csv(outputs["gene_counts"])
         tables["tpm"].to_csv(outputs["gene_tpm"])
-        tables["log2_tpm_plus1"].to_csv(outputs["gene_log2_tpm_plus1"])
+        tables["log2_tpm"].to_csv(outputs["gene_log2_tpm"])
 
         return {name: str(path) for name, path in outputs.items()}
 
@@ -266,3 +266,19 @@ class SalmonExpressionExporter:
             if counts_path.exists():
                 return counts_path
         return None
+
+
+def merge_salmon_quant_tables(
+    salmon_dir: str,
+    output_dir: str,
+    gtf_file: Optional[str] = None,
+    tx2gene: Optional[str] = None,
+) -> Dict[str, str]:
+    """Merge all Salmon quant.sf files under a directory into gene-level tables."""
+    return SalmonExpressionExporter().export_gene_tables(
+        salmon_dir=salmon_dir,
+        output_dir=output_dir,
+        gtf_file=gtf_file,
+        tx2gene=tx2gene,
+        sample_names=None,
+    )

@@ -33,7 +33,7 @@ class InputValidationTests(unittest.TestCase):
         )
         return coldata
 
-    def test_validate_input_files_accepts_reads_and_transposed_counts(self) -> None:
+    def test_validate_input_files_accepts_reads_and_gene_by_sample_counts(self) -> None:
         coldata = self._write_coldata()
         counts = self.root / "counts.csv"
         pd.DataFrame(
@@ -69,7 +69,7 @@ class InputValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Read files do not exist"):
             validate_input_files(str(coldata), check_reads=True)
 
-    def test_validate_input_files_rejects_transposed_expression(self) -> None:
+    def test_validate_input_files_accepts_gene_by_sample_expression(self) -> None:
         coldata = self.root / "coldata.csv"
         coldata.write_text(
             "sample,condition\nsample1,A\nsample2,B\n",
@@ -81,8 +81,27 @@ class InputValidationTests(unittest.TestCase):
             index=["geneA", "geneB"],
         ).to_csv(expression)
 
-        with self.assertRaisesRegex(ValueError, "appears transposed"):
-            validate_input_files(str(coldata), expression=str(expression))
+        messages = validate_input_files(str(coldata), expression=str(expression))
+
+        self.assertIn("expression: 2 samples x 2 genes", messages)
+
+    def test_validate_input_files_warns_on_samples_by_genes_expression(self) -> None:
+        coldata = self.root / "coldata.csv"
+        coldata.write_text(
+            "sample,condition\nsample1,A\nsample2,B\n",
+            encoding="utf-8",
+        )
+        expression = self.root / "expression.csv"
+        pd.DataFrame(
+            {"geneA": [1.0, 2.0], "geneB": [3.0, 4.0], "geneC": [5.0, 6.0]},
+            index=["sample1", "sample2"],
+        ).to_csv(expression)
+
+        with self.assertLogs("rskit.input_validation", level="WARNING") as logs:
+            messages = validate_input_files(str(coldata), expression=str(expression))
+
+        self.assertIn("genes x samples", "\n".join(logs.output))
+        self.assertIn("expression: 2 samples x 3 genes", messages)
 
     def test_doctor_cli_uses_validate_input_files(self) -> None:
         args = argparse.Namespace(

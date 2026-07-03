@@ -11,13 +11,13 @@ from rskit.input_validation import validate_input_files
 from rskit.templates import write_template
 from rskit.config import StarConfig, SalmonConfig, PipelineConfig, DESeq2Config
 from rskit.core.pipeline import RNAseqPipeline
-from rskit.core.deseq2 import Deseq2Analyzer, run_deseq2_cli
+from rskit.core.deseq2 import run_deseq2_cli
 from rskit.core.wgcna import run_wgcna_cli
 from rskit.utils.logger import get_logger
 from rskit.utils.validators import check_and_prepare_index
-from rskit.utils.parallel import calculate_threads_per_sample, run_samples_parallel
+from rskit.utils.parallel import calculate_sample_plan, run_samples_parallel
 from rskit.core.star import StarIndexer
-from rskit.core.salmon import SalmonExpressionExporter, SalmonQuantifier
+from rskit.core.salmon import SalmonExpressionExporter, merge_salmon_quant_tables
 
 logger = get_logger(__name__)
 
@@ -61,6 +61,7 @@ class Deseq2Args:
     contrast: Optional[List[str]] = None
     alpha: float = 0.05
     lfc_threshold: float = 2.0
+    prefilter_min_count: int = 10
     threads: Optional[int] = None
 
 
@@ -127,21 +128,22 @@ def trim_sample_wrapper(args):
 
 
 def prepare_samples(samples_list, workdirs: Dict[str, Path], 
-                    trim: bool, threads: int, parallel: bool = False,
+                    trim: bool, threads: int, jobs: int = 1,
                     fastp_args: str = "") -> Dict[str, Dict]:
     """Prepare samples dict with optional trimming"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     
     if trim:
-        if parallel and len(samples_list) > 1:
+        if jobs > 1 and len(samples_list) > 1:
             # Parallel trimming
             num_samples = len(samples_list)
-            logger.info(f"Parallel trimming: {num_samples} samples")
+            max_workers = min(jobs, num_samples)
+            logger.info(f"Parallel trimming: {num_samples} samples, {max_workers} active jobs")
             
             trim_args = [(name, r1, r2, workdirs, threads, fastp_args) for name, r1, r2 in samples_list]
             
             samples = {}
-            with ThreadPoolExecutor(max_workers=num_samples) as executor:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {executor.submit(trim_sample_wrapper, args): args[0] for args in trim_args}
                 for i, future in enumerate(as_completed(futures), 1):
                     sample_name, r1_clean, r2_clean = future.result()
@@ -171,14 +173,14 @@ def build_index_if_needed(index_dir: Path, genome_fasta: str, gtf_file: str,
 
 def run_quantification(samples: Dict[str, Dict], genome_fasta: str, gtf_file: str,
                        transcript_fasta: str, index_dir: Path, workdirs: Dict[str, Path],
-                       threads_per_sample: int, parallel: bool, skip_existing: bool = False,
+                       threads_per_sample: int, jobs: int, skip_existing: bool = False,
                        star_args: str = "", salmon_args: str = "") -> Dict:
     """Run quantification pipeline (parallel or sequential)"""
     num_samples = len(samples)
     
-    if parallel and num_samples > 1:
+    if jobs > 1 and num_samples > 1:
         return run_samples_parallel(samples, str(index_dir), transcript_fasta, 
-                                    workdirs, threads_per_sample, skip_existing,
+                                    workdirs, threads_per_sample, jobs, skip_existing,
                                     star_args=star_args, salmon_args=salmon_args)
     else:
         config = PipelineConfig(
@@ -204,18 +206,47 @@ def export_quant_expression_tables(
     gtf_file: Optional[str],
     tx2gene: Optional[str] = None,
     sample_names: Optional[List[str]] = None,
+    merge_sf: bool = False,
 ) -> Dict[str, str]:
     """Export gene-level expression tables from Salmon quantification output."""
-    exporter = SalmonExpressionExporter()
-    outputs = exporter.export_gene_tables(
-        salmon_dir=str(quant_dir),
-        output_dir=str(quant_dir),
-        gtf_file=gtf_file,
-        tx2gene=tx2gene,
-        sample_names=sample_names,
-    )
+    if merge_sf:
+        outputs = merge_salmon_quant_tables(
+            salmon_dir=str(quant_dir),
+            output_dir=str(quant_dir),
+            gtf_file=gtf_file,
+            tx2gene=tx2gene,
+        )
+    else:
+        outputs = SalmonExpressionExporter().export_gene_tables(
+            salmon_dir=str(quant_dir),
+            output_dir=str(quant_dir),
+            gtf_file=gtf_file,
+            tx2gene=tx2gene,
+            sample_names=sample_names,
+        )
     logger.info(f"Expression tables written to {quant_dir}")
     return outputs
+
+
+def log_sample_plan(plan, num_samples: int) -> None:
+    """Log resolved sample scheduling plan."""
+    reason = ", ".join(plan.cap_reasons) if plan.cap_reasons else "none"
+    logger.info(
+        "Sample scheduling: "
+        f"requested jobs={plan.requested_jobs}, samples={num_samples}, "
+        f"total threads={plan.total_threads}, active jobs={plan.active_jobs}, "
+        f"threads/sample={plan.threads_per_sample}, cap reason={reason}"
+    )
+
+
+def cap_threads_to_available_cpus(threads: Optional[int]) -> Optional[int]:
+    """Cap a thread request to the CPUs visible to Python."""
+    if threads is None:
+        return None
+    cpu_count = os.cpu_count()
+    if cpu_count is None:
+        return threads
+    return min(threads, cpu_count)
 
 
 def main_quant(args):
@@ -246,36 +277,35 @@ def main_quant(args):
             raise ValueError("Must provide --sample, --r1, --r2 or use --coldata")
         samples_list = [(args.sample, r1, r2)]
     
-    # Calculate threads per sample
+    # Calculate sample scheduling plan
     num_samples = len(samples_list)
-    use_parallel = args.parallel is not None and num_samples > 1
-    if use_parallel:
-        threads_per_sample = calculate_threads_per_sample(args.parallel, num_samples)
-        logger.info(f"Parallel: {args.parallel} cores / {num_samples} samples = {threads_per_sample} threads/sample")
-    else:
-        threads_per_sample = args.threads
+    sample_plan = calculate_sample_plan(args.threads, args.jobs, num_samples)
+    log_sample_plan(sample_plan, num_samples)
     
     # Prepare and run samples
     samples = prepare_samples(
         samples_list,
         workdirs,
         args.trim,
-        threads_per_sample,
-        parallel=use_parallel,
+        sample_plan.threads_per_sample,
+        jobs=sample_plan.active_jobs,
         fastp_args=fastp_args,
     )
     results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
-                                 index_dir, workdirs, threads_per_sample, use_parallel, args.skip_existing,
+                                 index_dir, workdirs, sample_plan.threads_per_sample,
+                                 sample_plan.active_jobs, args.skip_existing,
                                  star_args=star_args, salmon_args=salmon_args)
     expression_outputs = export_quant_expression_tables(
         quant_dir=workdirs['quant'],
         gtf_file=gtf_file,
         tx2gene=getattr(args, "tx2gene", None),
         sample_names=[sample_name for sample_name, _, _ in samples_list],
+        merge_sf=getattr(args, "merge_sf", False),
     )
     
     logger.info(f"Pipeline completed. Processed {len(results)} samples.")
-    logger.info(f"Gene-level outputs: {expression_outputs}")
+    if expression_outputs:
+        logger.info(f"Gene-level outputs: {expression_outputs}")
 
 
 def main_deseq2(args):
@@ -372,14 +402,10 @@ def main_all(args):
     # Parse samples from coldata
     samples_list = parse_samples_from_coldata(coldata_file)
     
-    # Calculate threads per sample
+    # Calculate sample scheduling plan
     num_samples = len(samples_list)
-    use_parallel = args.parallel is not None and num_samples > 1
-    if use_parallel:
-        threads_per_sample = calculate_threads_per_sample(args.parallel, num_samples)
-        logger.info(f"Parallel: {args.parallel} cores / {num_samples} samples = {threads_per_sample} threads/sample")
-    else:
-        threads_per_sample = args.threads
+    sample_plan = calculate_sample_plan(args.threads, args.jobs, num_samples)
+    log_sample_plan(sample_plan, num_samples)
     
     # Step 1: Run quantification
     logger.info("="*60)
@@ -390,12 +416,13 @@ def main_all(args):
         samples_list,
         workdirs,
         args.trim,
-        threads_per_sample,
-        parallel=use_parallel,
+        sample_plan.threads_per_sample,
+        jobs=sample_plan.active_jobs,
         fastp_args=fastp_args,
     )
     results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
-                                 index_dir, workdirs, threads_per_sample, use_parallel, args.skip_existing,
+                                 index_dir, workdirs, sample_plan.threads_per_sample,
+                                 sample_plan.active_jobs, args.skip_existing,
                                  star_args=star_args, salmon_args=salmon_args)
     logger.info(f"Quantification completed. Processed {len(results)} samples.")
     expression_outputs = export_quant_expression_tables(
@@ -403,6 +430,7 @@ def main_all(args):
         gtf_file=gtf_file,
         tx2gene=args.tx2gene,
         sample_names=[sample_name for sample_name, _, _ in samples_list],
+        merge_sf=getattr(args, "merge_sf", False),
     )
     
     # Step 2: Run DESeq2
@@ -422,7 +450,8 @@ def main_all(args):
         contrast=args.contrast,
         alpha=args.alpha,
         lfc_threshold=getattr(args, 'lfc_threshold', 2.0),
-        threads=args.threads
+        prefilter_min_count=getattr(args, 'prefilter_min_count', 10),
+        threads=cap_threads_to_available_cpus(args.threads)
     )
     
     try:
@@ -459,8 +488,10 @@ def main():
     parser_quant.add_argument("-idx", "--index-dir", dest="index_dir", help="STAR index directory (default: <output_dir>/00_index)")
     parser_quant.add_argument("-t2g", "--tx2gene", dest="tx2gene",
         help="Path to transcript-to-gene mapping file for gene-level expression export")
-    parser_quant.add_argument("-t", "--threads", type=int, default=8, help="Number of threads per sample")
-    parser_quant.add_argument("-p", "--parallel", type=int, help="Total cores for parallel processing")
+    parser_quant.add_argument("-t", "--threads", type=int, default=8, help="Total thread budget")
+    parser_quant.add_argument("-j", "--jobs", type=int, default=1, help="Maximum number of samples to process concurrently")
+    parser_quant.add_argument("-ms", "--merge-sf", action="store_true",
+        help="Merge all 03_quant/*/quant.sf files into gene-level expression tables")
     parser_quant.add_argument("-tr", "--trim", action="store_true", help="Trim reads with fastp")
     parser_quant.add_argument("-fi", "--force-index", action="store_true", help="Force rebuild index")
     parser_quant.add_argument("-se", "--skip-existing", action="store_true", help="Skip samples if output already exists")
@@ -491,7 +522,7 @@ Examples:
     input_group.add_argument("-sd", "--salmon-dir", dest="salmon_dir", 
         help="Directory containing Salmon quant subfolders")
     input_group.add_argument("-gc", "--gene-counts", dest="gene_counts",
-        help="Path to gene counts matrix file (CSV/TSV)")
+        help="Path to gene counts matrix file (genes x samples, CSV/TSV)")
     
     parser_deseq2.add_argument("-S", "--coldata", required=True,
         help="Path to coldata/metadata file with columns: sample,id,condition")
@@ -511,8 +542,10 @@ Examples:
         help="Significance threshold for adjusted p-values")
     parser_deseq2.add_argument("-l", "--lfc", dest="lfc_threshold", type=float, default=2.0,
         help="Log2 fold change threshold for significant genes")
+    parser_deseq2.add_argument("-F", "--min-count", dest="prefilter_min_count", type=int, default=10,
+        help="Minimum total count for DESeq2 gene prefiltering; use 0 to disable")
     parser_deseq2.add_argument("-t", "--threads", type=int, default=None,
-        help="Number of threads for parallel processing")
+        help="Number of CPUs for PyDESeq2 inference")
     
     parser_deseq2.set_defaults(func=main_deseq2)
     
@@ -527,7 +560,7 @@ Examples:
         """)
     
     parser_wgcna.add_argument("-e", "--expression", required=True,
-        help="Path to gene expression matrix file (CSV/TSV)")
+        help="Path to gene expression matrix file (genes x samples, CSV/TSV)")
     parser_wgcna.add_argument("-o", "--output-dir", dest="output_dir", required=True,
         help="Output directory for WGCNA results")
     parser_wgcna.add_argument("-S", "--coldata", dest="coldata",
@@ -607,7 +640,7 @@ Coldata format (CSV):
 
 Examples:
     rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/
-    rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ -p 24
+    rskit all -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ -t 100 -j 20
         """)
     
     parser_all.add_argument("-S", "--coldata", required=True,
@@ -625,9 +658,11 @@ Examples:
     parser_all.add_argument("-t2g", "--tx2gene", dest="tx2gene",
         help="Path to transcript-to-gene mapping file")
     parser_all.add_argument("-t", "--threads", type=int, default=8,
-        help="Number of threads per sample")
-    parser_all.add_argument("-p", "--parallel", type=int,
-        help="Total cores for parallel processing")
+        help="Total thread budget")
+    parser_all.add_argument("-j", "--jobs", type=int, default=1,
+        help="Maximum number of samples to process concurrently")
+    parser_all.add_argument("-ms", "--merge-sf", action="store_true",
+        help="Merge all 03_quant/*/quant.sf files into gene-level expression tables")
     parser_all.add_argument("-tr", "--trim", action="store_true",
         help="Trim reads with fastp")
     parser_all.add_argument("-fi", "--force-index", action="store_true",
@@ -648,6 +683,8 @@ Examples:
         help="Significance threshold for adjusted p-values")
     parser_all.add_argument("-l", "--lfc", dest="lfc_threshold", type=float, default=2.0,
         help="Log2 fold change threshold for significant genes")
+    parser_all.add_argument("-F", "--min-count", dest="prefilter_min_count", type=int, default=10,
+        help="Minimum total count for DESeq2 gene prefiltering; use 0 to disable")
     
     parser_all.set_defaults(func=main_all)
     

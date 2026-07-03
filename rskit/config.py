@@ -39,6 +39,7 @@ class DESeq2Config:
     alt_hypothesis: Optional[str] = None
     cooks_filter: bool = True
     independent_filter: bool = True
+    prefilter_min_count: int = 10
     refit_cooks: bool = True
     min_replicates: int = 7
     n_cpus: Optional[int] = None

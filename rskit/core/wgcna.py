@@ -30,7 +30,8 @@ class WGCNAAnalyzer:
         """Load expression data and metadata"""
         logger.info(f"Loading expression data from {expression_file}")
         
-        # Load expression data
+        # Load expression data. User-facing files are genes x samples; PyWGCNA
+        # expects samples x genes, so transpose after optional validation.
         gene_expr = read_table(expression_file, sep=sep, index_col=0)
             
         # Load sample metadata if provided
@@ -38,7 +39,21 @@ class WGCNAAnalyzer:
         if coldata:
             logger.info(f"Loading sample metadata from {coldata}")
             sample_info = load_coldata(coldata)
-            self._validate_expression_sample_orientation(gene_expr, sample_info)
+            appears_samples_by_genes = self._warn_if_expression_looks_samples_by_genes(gene_expr, sample_info)
+        else:
+            appears_samples_by_genes = False
+
+        if appears_samples_by_genes:
+            if sample_info is not None:
+                validate_sample_alignment(gene_expr, sample_info, table_name="expression matrix")
+                gene_expr = gene_expr.loc[sample_info.index]
+            gene_expr.index.name = "sample"
+        else:
+            gene_expr = gene_expr.T
+            gene_expr.index.name = "sample"
+            if sample_info is not None:
+                validate_sample_alignment(gene_expr, sample_info, table_name="expression matrix")
+                gene_expr = gene_expr.loc[sample_info.index]
                 
         # Load gene metadata if provided
         gene_info = None
@@ -75,19 +90,20 @@ class WGCNAAnalyzer:
         return self.wgcna_obj
 
     @staticmethod
-    def _validate_expression_sample_orientation(gene_expr, sample_info):
-        """Validate PyWGCNA expression matrix sample orientation."""
+    def _warn_if_expression_looks_samples_by_genes(gene_expr, sample_info):
+        """Warn when a user expression matrix does not follow genes x samples."""
         sample_ids = {str(sample_id) for sample_id in sample_info.index}
         expression_rows = {str(sample_id) for sample_id in gene_expr.index}
         expression_columns = {str(column) for column in gene_expr.columns}
 
-        if sample_ids.issubset(expression_columns) and not sample_ids.issubset(expression_rows):
-            raise ValueError(
-                "WGCNA expression matrix appears transposed: sample metadata IDs match "
-                "expression columns, but PyWGCNA expects samples as rows and genes as columns."
+        if sample_ids.issubset(expression_rows) and not sample_ids.issubset(expression_columns):
+            logger.warning(
+                "WGCNA expression matrix appears to be samples x genes, but rskit expects "
+                "genes x samples for user input; please transpose the file."
             )
+            return True
 
-        validate_sample_alignment(gene_expr, sample_info, table_name="expression matrix")
+        return False
         
     def run_analysis(self, show=False):
         """Run the complete WGCNA analysis pipeline"""

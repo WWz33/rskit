@@ -27,6 +27,9 @@ class CliAliasTests(unittest.TestCase):
             "-tr",
             "-fi",
             "-se",
+            "-j",
+            "4",
+            "-ms",
         ]
 
         with mock.patch.object(sys, "argv", argv), \
@@ -37,6 +40,56 @@ class CliAliasTests(unittest.TestCase):
         self.assertTrue(args.trim)
         self.assertTrue(args.force_index)
         self.assertTrue(args.skip_existing)
+        self.assertEqual(args.jobs, 4)
+        self.assertTrue(args.merge_sf)
+
+    def test_quant_parallel_argument_is_removed(self) -> None:
+        argv = [
+            "rskit",
+            "quant",
+            "-s",
+            "sample1",
+            "-1",
+            "r1.fq.gz",
+            "-2",
+            "r2.fq.gz",
+            "-g",
+            "genome.fa",
+            "-gtf",
+            "annotation.gtf",
+            "-gf",
+            "transcripts.fa",
+            "-o",
+            "results",
+            "-p",
+            "8",
+        ]
+
+        with mock.patch.object(sys, "argv", argv):
+            with self.assertRaises(SystemExit):
+                cli.main()
+
+    def test_all_parallel_argument_is_removed(self) -> None:
+        argv = [
+            "rskit",
+            "all",
+            "-S",
+            "coldata.csv",
+            "-g",
+            "genome.fa",
+            "-gtf",
+            "annotation.gtf",
+            "-gf",
+            "transcripts.fa",
+            "-o",
+            "results",
+            "-p",
+            "8",
+        ]
+
+        with mock.patch.object(sys, "argv", argv):
+            with self.assertRaises(SystemExit):
+                cli.main()
 
     def test_deseq2_short_aliases_parse_to_existing_fields(self) -> None:
         argv = [
@@ -54,6 +107,8 @@ class CliAliasTests(unittest.TestCase):
             "0.01",
             "-l",
             "1.5",
+            "-F",
+            "25",
         ]
 
         with mock.patch.object(sys, "argv", argv), \
@@ -65,6 +120,7 @@ class CliAliasTests(unittest.TestCase):
         self.assertEqual(args.contrast, "condition,treatment,control")
         self.assertEqual(args.alpha, 0.01)
         self.assertEqual(args.lfc_threshold, 1.5)
+        self.assertEqual(args.prefilter_min_count, 25)
 
     def test_validate_and_template_short_aliases_parse_to_existing_fields(self) -> None:
         with mock.patch.object(

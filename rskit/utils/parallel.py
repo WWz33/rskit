@@ -1,22 +1,47 @@
-from pathlib import Path
-import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from pathlib import Path
+from typing import List
 from rskit.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-def count_samples_from_coldata(coldata_file):
-    """Count number of samples from coldata file."""
-    coldata_path = Path(coldata_file)
-    sep = '\t' if coldata_path.suffix == '.tsv' else ','
-    df = pd.read_csv(coldata_path, sep=sep)
-    return len(df)
 
-def calculate_threads_per_sample(parallel_cores, num_samples):
-    """Calculate threads per sample based on total parallel cores and number of samples."""
+@dataclass(frozen=True)
+class SamplePlan:
+    """Resolved per-sample scheduling plan."""
+
+    total_threads: int
+    requested_jobs: int
+    active_jobs: int
+    threads_per_sample: int
+    cap_reasons: List[str]
+
+
+def calculate_sample_plan(total_threads: int, requested_jobs: int, num_samples: int) -> SamplePlan:
+    """Resolve total thread budget and requested jobs into a bounded sample plan."""
+    if total_threads <= 0:
+        raise ValueError("--threads must be a positive integer")
+    if requested_jobs <= 0:
+        raise ValueError("--jobs must be a positive integer")
     if num_samples <= 0:
-        return parallel_cores
-    return max(1, parallel_cores // num_samples)
+        raise ValueError("At least one sample is required")
+
+    active_jobs = min(requested_jobs, num_samples, total_threads)
+    cap_reasons = []
+    if active_jobs < requested_jobs:
+        if active_jobs == num_samples or num_samples <= total_threads:
+            cap_reasons.append("sample count")
+        if active_jobs == total_threads or total_threads < num_samples:
+            cap_reasons.append("total threads")
+
+    return SamplePlan(
+        total_threads=total_threads,
+        requested_jobs=requested_jobs,
+        active_jobs=active_jobs,
+        threads_per_sample=max(1, total_threads // active_jobs),
+        cap_reasons=cap_reasons,
+    )
 
 
 def process_single_sample(args):
@@ -65,15 +90,19 @@ def run_samples_parallel(
     transcript_fasta,
     workdirs,
     threads_per_sample,
+    jobs,
     skip_existing=False,
     star_args="",
     salmon_args="",
 ):
     """Run alignment and quantification for multiple samples in parallel."""
     num_samples = len(samples)
-    max_workers = num_samples
+    max_workers = min(jobs, num_samples)
     
-    logger.info(f"Parallel processing: {num_samples} samples, {threads_per_sample} threads each")
+    logger.info(
+        f"Parallel processing: {num_samples} samples, {max_workers} active jobs, "
+        f"{threads_per_sample} threads/sample"
+    )
     
     sample_args = [
         (name, data, index_dir, transcript_fasta, workdirs, threads_per_sample, skip_existing, star_args, salmon_args)

@@ -4,11 +4,10 @@ from typing import Dict, List, Optional, Tuple, Union
 import pandas as pd
 import numpy as np
 from rskit.config import DESeq2Config
-from rskit.core.salmon import SalmonExpressionExporter
+from rskit.core.salmon import SalmonExpressionExporter, merge_salmon_quant_tables
 from rskit.input_contracts import (
     design_columns,
     load_coldata,
-    orient_sample_table,
     read_table,
     validate_sample_alignment,
 )
@@ -86,41 +85,11 @@ class Deseq2Analyzer:
         self.logger.info(f"tx2gene preview:\n{tx2gene_df.head()}")
         return tx2gene_df
     
-    def load_counts_from_salmon(self, salmon_dir: str, coldata: pd.DataFrame, 
-                                 gtf_file: Optional[str] = None,
-                                 tx2gene: Optional[str] = None,
-                                 output_dir: Optional[str] = None) -> pd.DataFrame:
-        """Load count data from Salmon quantification results using pytximport.
-        
-        Args:
-            salmon_dir: Directory containing Salmon quantification results
-            coldata: DataFrame with sample information (index=sample names)
-            gtf_file: Path to GTF annotation file (to create tx2gene map)
-            tx2gene: Path to tx2gene mapping file (CSV or TSV)
-            output_dir: Directory to save tx2gene.tsv for debugging
-            
-        Returns:
-            DataFrame with gene-level counts (samples x genes)
-        """
-        tables = self.expression_exporter.build_gene_tables(
-            salmon_dir=salmon_dir,
-            gtf_file=gtf_file,
-            tx2gene=tx2gene,
-            output_dir=output_dir,
-            sample_names=list(coldata.index),
-        )
-        counts_df = tables["counts"].round().astype(int)
-        
-        self.counts_df = counts_df
-        self.logger.info(f"Loaded counts for {counts_df.shape[0]} samples and {counts_df.shape[1]} genes")
-        
-        return counts_df
-    
     def load_counts_from_file(self, counts_file: str, metadata_df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
         """Load count data from file.
         
         Args:
-            counts_file: Path to counts matrix file (genes x samples or samples x genes)
+            counts_file: Path to counts matrix file (genes x samples)
             
         Returns:
             DataFrame with counts (samples x genes)
@@ -128,10 +97,20 @@ class Deseq2Analyzer:
         counts_df = read_table(counts_file, index_col=0)
 
         if metadata_df is not None:
-            counts_df = orient_sample_table(counts_df, metadata_df, table_name="counts matrix")
-        elif counts_df.shape[0] > counts_df.shape[1] * 2:
-            self.logger.info("Transposing counts matrix to samples x genes format")
-            counts_df = counts_df.T
+            metadata_samples = {str(sample_id) for sample_id in metadata_df.index}
+            row_ids = {str(row_id) for row_id in counts_df.index}
+            column_ids = {str(column) for column in counts_df.columns}
+            if metadata_samples.issubset(row_ids) and not metadata_samples.issubset(column_ids):
+                self.logger.warning(
+                    "Counts matrix appears to be samples x genes, but rskit expects "
+                    "genes x samples for user input; please transpose the file."
+                )
+
+        counts_df = counts_df.T
+
+        if metadata_df is not None:
+            validate_sample_alignment(counts_df, metadata_df, table_name="counts matrix")
+            counts_df = counts_df.loc[metadata_df.index]
         
         # Ensure integer counts
         counts_df = counts_df.round().astype(int)
@@ -140,6 +119,29 @@ class Deseq2Analyzer:
         self.logger.info(f"Loaded counts for {counts_df.shape[0]} samples and {counts_df.shape[1]} genes")
         
         return counts_df
+
+    def prefilter_counts(self, counts_df: pd.DataFrame) -> pd.DataFrame:
+        """Keep genes whose total counts across samples meet the configured threshold."""
+        min_count = self.config.prefilter_min_count
+        if min_count <= 0:
+            return counts_df
+
+        genes_to_keep = counts_df.columns[counts_df.sum(axis=0) >= min_count]
+        filtered_counts = counts_df.loc[:, genes_to_keep]
+        removed_genes = counts_df.shape[1] - filtered_counts.shape[1]
+
+        if filtered_counts.shape[1] == 0:
+            raise ValueError(
+                f"No genes remain after prefiltering with total count >= {min_count}"
+            )
+
+        if removed_genes:
+            self.logger.info(
+                f"Prefiltered {removed_genes} genes with total counts < {min_count}; "
+                f"{filtered_counts.shape[1]} genes remain"
+            )
+
+        return filtered_counts
     
     def load_metadata(self, metadata_file: str, required_columns: Optional[List[str]] = None) -> pd.DataFrame:
         """Load metadata from CSV or TSV file.
@@ -203,6 +205,7 @@ class Deseq2Analyzer:
         # Ensure sample names match
         validate_sample_alignment(self.counts_df, self.metadata_df, table_name="counts matrix")
         self.counts_df = self.counts_df.loc[self.metadata_df.index]
+        self.counts_df = self.prefilter_counts(self.counts_df)
         
         # Initialize inference
         inference = DefaultInference(n_cpus=self.config.n_cpus)
@@ -563,6 +566,7 @@ class Deseq2Analyzer:
             'downregulated_genes': down_genes,
             'alpha': self.config.alpha,
             'lfc_threshold': self.config.lfc_threshold,
+            'prefilter_min_count': self.config.prefilter_min_count,
             'design': self.config.design
         }
 
@@ -580,6 +584,7 @@ def run_deseq2_cli(args):
         design=args.design,
         alpha=args.alpha,
         lfc_threshold=getattr(args, 'lfc_threshold', 2.0),
+        prefilter_min_count=getattr(args, 'prefilter_min_count', 10),
         n_cpus=args.threads
     )
     
@@ -603,12 +608,11 @@ def run_deseq2_cli(args):
             counts_file = str(existing_counts)
         else:
             logger.info(f"Exporting gene-level quantification tables before DESeq2: {args.salmon_dir}")
-            expression_outputs = SalmonExpressionExporter().export_gene_tables(
+            expression_outputs = merge_salmon_quant_tables(
                 salmon_dir=args.salmon_dir,
                 output_dir=args.salmon_dir,
                 gtf_file=args.gtf,
                 tx2gene=args.tx2gene,
-                sample_names=list(metadata_df.index),
             )
             counts_file = expression_outputs["gene_counts"]
         

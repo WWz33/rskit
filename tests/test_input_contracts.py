@@ -4,18 +4,38 @@ from pathlib import Path
 
 import pandas as pd
 
+import rskit.input_contracts as input_contracts
 from rskit.input_contracts import (
     detect_separator,
     design_columns,
     load_coldata,
-    orient_sample_table,
     read_table,
     resolve_path_from_table,
     validate_sample_alignment,
 )
 
 
+def orient_sample_table(
+    table: pd.DataFrame,
+    metadata: pd.DataFrame,
+    table_name: str = "input table",
+) -> pd.DataFrame:
+    """Test-only helper for fixtures that intentionally use genes x samples."""
+    metadata_samples = {str(sample_id) for sample_id in metadata.index}
+    row_samples = {str(sample_id) for sample_id in table.index}
+    column_samples = {str(column) for column in table.columns}
+
+    if metadata_samples.issubset(column_samples) and not metadata_samples.issubset(row_samples):
+        table = table.T
+
+    validate_sample_alignment(table, metadata, table_name=table_name)
+    return table.loc[metadata.index]
+
+
 class InputContractTests(unittest.TestCase):
+    def test_production_contracts_do_not_export_test_orientation_helper(self) -> None:
+        self.assertFalse(hasattr(input_contracts, "orient_sample_table"))
+
     def test_detect_separator_uses_extension_unless_overridden(self) -> None:
         self.assertEqual(detect_separator("samples.csv"), ",")
         self.assertEqual(detect_separator("samples.tsv"), "\t")

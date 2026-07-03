@@ -1,15 +1,18 @@
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Tuple
 
 import pandas as pd
 
 from rskit.input_contracts import (
     design_columns,
     load_coldata,
-    orient_sample_table,
     read_table,
     resolve_path_from_table,
     validate_sample_alignment,
 )
+from rskit.utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def validate_input_files(
@@ -33,18 +36,18 @@ def validate_input_files(
 
     if gene_counts:
         counts = read_table(gene_counts, index_col=0)
-        oriented_counts = orient_sample_table(counts, metadata, table_name="gene counts")
+        samples, genes = _validate_gene_by_sample_table(counts, metadata, table_name="gene counts")
         messages.append(
             "gene counts: "
-            + f"{oriented_counts.shape[0]} samples x {oriented_counts.shape[1]} genes"
+            + f"{samples} samples x {genes} genes"
         )
 
     if expression:
         expression_table = read_table(expression, index_col=0)
-        _validate_expression_table(expression_table, metadata)
+        samples, genes = _validate_gene_by_sample_table(expression_table, metadata, table_name="expression matrix")
         messages.append(
             "expression: "
-            + f"{expression_table.shape[0]} samples x {expression_table.shape[1]} genes"
+            + f"{samples} samples x {genes} genes"
         )
 
     return messages
@@ -62,18 +65,28 @@ def _validate_read_paths(coldata: str, metadata: pd.DataFrame) -> None:
         raise ValueError("Read files do not exist: " + _preview(missing_paths))
 
 
-def _validate_expression_table(expression: pd.DataFrame, metadata: pd.DataFrame) -> None:
+def _validate_gene_by_sample_table(
+    table: pd.DataFrame,
+    metadata: pd.DataFrame,
+    table_name: str,
+) -> Tuple[int, int]:
     metadata_samples = {str(sample_id) for sample_id in metadata.index}
-    expression_rows = {str(sample_id) for sample_id in expression.index}
-    expression_columns = {str(column) for column in expression.columns}
+    table_rows = {str(sample_id) for sample_id in table.index}
+    table_columns = {str(column) for column in table.columns}
 
-    if metadata_samples.issubset(expression_columns) and not metadata_samples.issubset(expression_rows):
-        raise ValueError(
-            "Expression matrix appears transposed: sample IDs match columns, "
-            "but rows must be samples and columns must be genes"
+    appears_samples_by_genes = metadata_samples.issubset(table_rows) and not metadata_samples.issubset(table_columns)
+    if appears_samples_by_genes:
+        logger.warning(
+            f"{table_name} appears to be samples x genes, but rskit expects "
+            "genes x samples for user input; please transpose the file."
         )
+        validate_sample_alignment(table, metadata, table_name=table_name)
+        return table.shape
 
-    validate_sample_alignment(expression, metadata, table_name="expression matrix")
+    oriented = table.T
+    validate_sample_alignment(oriented, metadata, table_name=table_name)
+
+    return oriented.shape
 
 
 def _unique(values: Sequence[str]) -> List[str]:
