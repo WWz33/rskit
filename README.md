@@ -165,7 +165,7 @@ geneB,0.00,1.00,2.32,2.58
 - rows: genes
 - columns: samples
 - first column: gene ID
-- values: normalized expression (TPM recommended); the name `expression.csv` is generic and intentional — `counts.csv` is reserved for the integer count matrix consumed by `deseq2`
+- values: normalized expression (TPM recommended)
 
 ## Command Reference
 
@@ -242,12 +242,6 @@ DESeq2 differential expression analysis.
 | `-l` | `--lfc` | Absolute log2 fold-change threshold used for result summaries. Default: `2.0`. |
 | `-F` | `--min-count` | Minimum total count for DESeq2 gene prefiltering. Default: `10`; use `0` to disable. |
 | `-t` | `--threads` | Number of CPUs for PyDESeq2 inference. |
-
-When `--salmon-dir` points at a `quant` output directory, `deseq2` reuses `gene_counts.csv` or `gene_counts.tsv` if present. It falls back to scanning all `quant.sf` files only when no precomputed gene counts are available. Metadata sample IDs and count matrix sample IDs must match exactly.
-
-Before PyDESeq2 runs, rskit filters out genes below `--min-count`.
-
-`--contrast` must use `factor,level1,level2`. The factor must be a coldata column, and both levels must exist in that column; rskit validates this before loading counts or running DESeq2.
 
 ### `rskit validate` / `rskit doctor`
 

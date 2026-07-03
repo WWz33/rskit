@@ -116,7 +116,7 @@ rskit wgcna -e expression.csv -o ./wgcna_results
 rskit wgcna -e expression.csv -S coldata.csv -G gene_info.csv -o ./wgcna_results
 ```
 
-## Format（格式说明）
+## 格式说明
 
 ### `coldata.csv`
 
@@ -165,7 +165,7 @@ geneB,0.00,1.00,2.32,2.58
 - rows: genes
 - columns: samples
 - 第一列：gene ID
-- 数值：归一化表达量（推荐 TPM）；文件名 `expression.csv` 是通用命名 —— `counts.csv` 专用于 `deseq2` 消费的整数 count 矩阵，二者刻意区分
+- 数值：归一化表达量（推荐 TPM）
 
 ## 命令参考
 
@@ -242,12 +242,6 @@ DESeq2 差异表达分析。
 | `-l` | `--lfc` | summary 使用的绝对 log2 fold-change 阈值。默认：`2.0`。 |
 | `-F` | `--min-count` | DESeq2 预过滤的 gene total count 下限。默认：`10`；设为 `0` 可关闭。 |
 | `-t` | `--threads` | PyDESeq2 inference 使用的 CPU 数。 |
-
-当 `--salmon-dir` 指向 `quant` 输出目录时，`deseq2` 会优先复用已有的 `gene_counts.csv` 或 `gene_counts.tsv`。只有不存在预计算 gene counts 时，才会扫描所有 `quant.sf` 重新导入。Metadata sample IDs 和 count matrix sample IDs 必须完全匹配。
-
-运行 PyDESeq2 前，rskit 会按 `--min-count` 过滤低 counts 基因。
-
-`--contrast` 必须使用 `factor,level1,level2` 格式。factor 必须是 coldata 中的列，两个 level 也必须真实存在于该列；rskit 会在加载 counts 或运行 DESeq2 之前完成校验。
 
 ### `rskit validate` / `rskit doctor`
 
