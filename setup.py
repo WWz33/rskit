@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="rskit",
-    version="0.1.0",
+    version="0.2.0",
     description="Python interface for RNA-seq analysis tools",
     packages=find_packages(),
     python_requires=">=3.8",
