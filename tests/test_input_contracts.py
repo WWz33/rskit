@@ -103,6 +103,25 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(design_columns("~batch + condition"), ["batch", "condition"])
         self.assertEqual(design_columns("~ 1"), [])
 
+class InputContractGuards(unittest.TestCase):
+    def test_resolve_path_rejects_empty_values(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Empty path value"):
+            resolve_path_from_table(float("nan"), "coldata.csv")
+        with self.assertRaisesRegex(ValueError, "Empty path value"):
+            resolve_path_from_table("  ", "coldata.csv")
+
+    def test_load_coldata_rejects_duplicate_samples(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            coldata = Path(tempdir) / "coldata.csv"
+            coldata.write_text("sample,r1,r2\ns1,a.fq,b.fq\ns1,c.fq,d.fq\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "Duplicate sample names"):
+                load_coldata(str(coldata), required_columns=["r1", "r2"])
+
+    def test_design_columns_includes_interaction_members(self) -> None:
+        self.assertEqual(design_columns("~batch + condition:batch"), ["batch", "condition"])
+        self.assertEqual(design_columns("~condition"), ["condition"])
+
 
 if __name__ == "__main__":
     unittest.main()

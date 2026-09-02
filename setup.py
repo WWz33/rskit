@@ -1,10 +1,4 @@
-from setuptools import setup, find_packages
+# Shim for legacy tooling; all metadata lives in pyproject.toml
+from setuptools import setup
 
-setup(
-    name="rskit",
-    version="0.2.0",
-    description="Python interface for RNA-seq analysis tools",
-    packages=find_packages(),
-    python_requires=">=3.8",
-    entry_points={"console_scripts": ["rskit=rskit.cli:main"]},
-)
+setup()

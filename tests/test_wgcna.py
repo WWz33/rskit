@@ -115,6 +115,29 @@ class WGCNAAnalyzerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "sample2"):
             analyzer.load_data(str(expression), coldata=str(coldata))
 
+    def test_load_data_passes_power_to_pywgcna(self) -> None:
+        expression = self.root / "expression.csv"
+        pd.DataFrame(
+            {"sample1": [1.0, 3.0], "sample2": [2.0, 4.0]},
+            index=pd.Index(["geneA", "geneB"], name="gene_id"),
+        ).to_csv(expression)
+        coldata = self._write_coldata()
+
+        fake_wgcna = mock.Mock(return_value="wgcna-object")
+        fake_module = types.SimpleNamespace(WGCNA=fake_wgcna)
+
+        with mock.patch.dict(sys.modules, {"PyWGCNA": fake_module}):
+            WGCNAAnalyzer(output_dir=str(self.root / "out"), power=3).load_data(
+                str(expression), coldata=str(coldata)
+            )
+        self.assertEqual(fake_wgcna.call_args.kwargs["powers"], [3])
+
+        with mock.patch.dict(sys.modules, {"PyWGCNA": fake_module}):
+            WGCNAAnalyzer(output_dir=str(self.root / "out")).load_data(
+                str(expression), coldata=str(coldata)
+            )
+        self.assertIsNone(fake_wgcna.call_args.kwargs["powers"])
+
 
 if __name__ == "__main__":
     unittest.main()

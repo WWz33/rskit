@@ -97,7 +97,9 @@ def run_samples_parallel(
 ):
     """Run alignment and quantification for multiple samples in parallel."""
     num_samples = len(samples)
-    max_workers = min(jobs, num_samples)
+    if num_samples == 0:
+        return {}
+    max_workers = max(1, min(jobs, num_samples))
     
     logger.info(
         f"Parallel processing: {num_samples} samples, {max_workers} active jobs, "
@@ -110,13 +112,32 @@ def run_samples_parallel(
     ]
     
     results = {}
+    failures = []
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(process_single_sample, args): args[0] for args in sample_args}
-        
+        abort = False
         for i, future in enumerate(as_completed(futures), 1):
-            sample_name, sample_results = future.result()
+            sample_name = futures[future]
+            if abort:
+                future.cancel()
+                continue
+            try:
+                _, sample_results = future.result()
+            except Exception as e:
+                failures.append((sample_name, e))
+                logger.error(f"[{sample_name}] Sample failed: {e}")
+                abort = True
+                for pending in futures:
+                    pending.cancel()
+                continue
             results[sample_name] = sample_results
             logger.info(f"Progress: {i}/{num_samples} completed")
-    
+
+    if failures:
+        raise RuntimeError(
+            f"{len(failures)} sample(s) failed: {', '.join(name for name, _ in failures)}. "
+            f"Re-run with --skip-existing to resume from completed samples."
+        ) from failures[0][1]
+
     logger.info(f"All {num_samples} samples completed!")
     return results

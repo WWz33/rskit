@@ -11,8 +11,14 @@ from unittest import mock
 import pandas as pd
 
 from rskit import cli
-from rskit.config import DESeq2Config
-from rskit.core.deseq2 import Deseq2Analyzer, parse_contrast, run_deseq2_cli
+from rskit.config import DESeq2Config, PipelineConfig, SalmonConfig, StarConfig
+from rskit.core.deseq2 import (
+    Deseq2Analyzer,
+    _lfc_shrink_coefficient,
+    parse_contrast,
+    run_deseq2_cli,
+)
+from rskit.core.pipeline import RNAseqPipeline
 from rskit.core.salmon import SalmonExpressionExporter
 
 
@@ -691,6 +697,100 @@ class QuantExpressionTests(unittest.TestCase):
             export_tables.call_args.kwargs["sample_names"],
             ["sample1", "sample2"],
         )
+
+    def test_lfc_shrink_coefficient_matches_design_column_naming(self) -> None:
+        # pydeseq2 names LFC columns after the design matrix (formulaic treatment coding)
+        columns = ["Intercept", "batch[T.y]", "condition[T.B]"]
+        self.assertEqual(
+            _lfc_shrink_coefficient(["condition", "B", "A"], columns), "condition[T.B]"
+        )
+        self.assertEqual(_lfc_shrink_coefficient(["batch", "y", "x"], columns), "batch[T.y]")
+        # legacy naming and continuous factors still resolve
+        self.assertEqual(
+            _lfc_shrink_coefficient(["condition", "B", "A"], ["Intercept", "condition_B_vs_A"]),
+            "condition_B_vs_A",
+        )
+        self.assertEqual(
+            _lfc_shrink_coefficient(["age", "old", "young"], ["Intercept", "age"]), "age"
+        )
+        self.assertIsNone(_lfc_shrink_coefficient(["missing", "B", "A"], ["Intercept"]))
+
+    def test_pipeline_force_index_rebuilds_valid_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            pipeline = RNAseqPipeline(PipelineConfig(output_dir=tempdir))
+            pipeline.aligner.align = mock.Mock(
+                return_value={"bam": "b", "transcriptome_bam": "tb", "log": "l"}
+            )
+            pipeline.quantifier.quantify = mock.Mock(return_value={"quant": "q"})
+            pipeline.indexer.build_index = mock.Mock(return_value=True)
+
+            with mock.patch("rskit.core.pipeline.check_star_index", return_value=True):
+                pipeline.run(
+                    samples={"sample1": {"fq1": "r1", "fq2": "r2"}},
+                    genome_fasta="genome.fa",
+                    gtf_file="genes.gtf",
+                    transcript_fasta="transcripts.fa",
+                    index_dir=str(Path(tempdir) / "index"),
+                    output_dir=tempdir,
+                    quant_output_dir=str(Path(tempdir) / "03_quant"),
+                    force_index=True,
+                )
+
+            pipeline.indexer.build_index.assert_called_once()
+            self.assertTrue(pipeline.indexer.build_index.call_args.kwargs.get("force", False))
+
+    def test_run_with_deseq2_uses_gene_level_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            gene_counts = pd.DataFrame(
+                {"sample1": [10, 20], "sample2": [30, 40]},
+                index=pd.Index(["ENSG1", "ENSG2"], name="gene_id"),
+            )
+            pipeline = RNAseqPipeline(PipelineConfig(output_dir=tempdir))
+            pipeline.run = mock.Mock(return_value={})
+            pipeline.deseq2_analyzer = mock.Mock()
+            pipeline.deseq2_analyzer.analyze.return_value = pd.DataFrame()
+
+            with mock.patch.object(
+                SalmonExpressionExporter,
+                "build_gene_tables",
+                return_value={"counts": gene_counts},
+            ) as build_gene_tables:
+                pipeline.run_with_deseq2(
+                    samples={"sample1": {"fq1": "r1", "fq2": "r2"}, "sample2": {"fq1": "r1", "fq2": "r2"}},
+                    genome_fasta="genome.fa",
+                    gtf_file="genes.gtf",
+                    transcript_fasta="transcripts.fa",
+                    index_dir="index_dir",
+                    output_dir=tempdir,
+                    quant_output_dir=str(Path(tempdir) / "03_quant"),
+                    metadata={"sample1": "ctrl", "sample2": "treat"},
+                )
+
+            build_gene_tables.assert_called_once()
+            passed_counts = pipeline.deseq2_analyzer.analyze.call_args.args[0]
+            # counts must be genes x features transposed to samples x genes with gene-level IDs
+            self.assertEqual(list(passed_counts.index), ["sample1", "sample2"])
+            self.assertEqual(list(passed_counts.columns), ["ENSG1", "ENSG2"])
+            self.assertEqual(list(passed_counts.dtypes), ["int64", "int64"])
+
+    def test_plot_ma_uses_fitted_stat_res(self) -> None:
+        analyzer = Deseq2Analyzer(DESeq2Config())
+        with self.assertRaisesRegex(ValueError, "analyze"):
+            analyzer.plot_ma()
+
+        analyzer.stat_res = mock.Mock()
+        analyzer.plot_ma(save_path="out/ma.pdf")
+        analyzer.stat_res.plot_MA.assert_called_once_with(save_path="out/ma.pdf")
+
+    def test_parse_samples_from_coldata_rejects_unsafe_sample_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            coldata = Path(tempdir) / "coldata.csv"
+            coldata.write_text(
+                "sample,r1,r2\n../escape,r1.fq,r2.fq\n", encoding="utf-8"
+            )
+
+            with self.assertRaisesRegex(ValueError, "Invalid sample name"):
+                cli.parse_samples_from_coldata(str(coldata))
 
 
 if __name__ == "__main__":

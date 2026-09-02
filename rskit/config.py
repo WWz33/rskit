@@ -3,7 +3,7 @@ from typing import List, Optional
 
 @dataclass
 class StarConfig:
-    threads: int = 56
+    threads: int = 1
     sjdb_overhang: int = 149
     align_intron_min: int = 20
     align_intron_max: int = 300000
@@ -21,7 +21,7 @@ class StarConfig:
 
 @dataclass
 class SalmonConfig:
-    threads: int = 56
+    threads: int = 1
     lib_type: str = "A"
     seq_bias: bool = True
     gc_bias: bool = True
@@ -51,4 +51,3 @@ class PipelineConfig:
     salmon: SalmonConfig = field(default_factory=SalmonConfig)
     deseq2: DESeq2Config = field(default_factory=DESeq2Config)
     output_dir: str = "results"
-    log_dir: str = "logs"

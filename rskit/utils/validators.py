@@ -21,12 +21,15 @@ def validate_dir(dir_path: str) -> bool:
 
 def check_star_index(index_dir: str) -> bool:
     index_path = Path(index_dir)
-    required_files = ["SA", "SAindex", "Genome", "genomeParameters.txt"]
-    return all((index_path / f).exists() for f in required_files)
+    required_files = ["SA", "SAindex", "Genome", "chrNameLength", "genomeParameters.txt"]
+    return all(
+        (index_path / f).exists() and (index_path / f).stat().st_size > 0
+        for f in required_files
+    )
 
 def check_salmon_index(index_dir: str) -> bool:
     index_path = Path(index_dir)
-    required_files = ["sa.bin", "txpInfo.bin", "refInfo.json", "versionInfo.json"]
+    required_files = ["sa.bin", "pos.bin", "txpInfo.bin", "versionInfo.json"]
     return all((index_path / f).exists() for f in required_files)
 
 def check_and_prepare_index(index_dir, force_index=False):

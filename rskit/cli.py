@@ -1,6 +1,7 @@
 import argparse
 import sys
 import os
+import re
 import subprocess
 from pathlib import Path
 from dataclasses import dataclass
@@ -58,7 +59,7 @@ class Deseq2Args:
     tx2gene: Optional[str] = None
     work_dir: str = "."
     design: str = "~condition"
-    contrast: Optional[List[str]] = None
+    contrast: Optional[str] = None
     alpha: float = 0.05
     lfc_threshold: float = 2.0
     prefilter_min_count: int = 10
@@ -116,8 +117,15 @@ def trim_reads(
 def parse_samples_from_coldata(coldata: str):
     """Parse samples from coldata file"""
     samples_df = load_coldata(coldata, required_columns=["r1", "r2"])
-    return [(sample_name, resolve_path_from_table(row['r1'], coldata), resolve_path_from_table(row['r2'], coldata))
-            for sample_name, row in samples_df.iterrows()]
+    samples = []
+    for sample_name, row in samples_df.iterrows():
+        name = str(sample_name)
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
+            raise ValueError(
+                f"Invalid sample name {name!r}: use letters, digits, '.', '_' or '-' only"
+            )
+        samples.append((name, resolve_path_from_table(row['r1'], coldata), resolve_path_from_table(row['r2'], coldata)))
+    return samples
 
 
 def trim_sample_wrapper(args):
@@ -298,11 +306,11 @@ def main_quant(args):
     expression_outputs = export_quant_expression_tables(
         quant_dir=workdirs['quant'],
         gtf_file=gtf_file,
-        tx2gene=getattr(args, "tx2gene", None),
+        tx2gene=args.tx2gene,
         sample_names=[sample_name for sample_name, _, _ in samples_list],
-        merge_sf=getattr(args, "merge_sf", False),
+        merge_sf=args.merge_sf,
     )
-    
+
     logger.info(f"Pipeline completed. Processed {len(results)} samples.")
     if expression_outputs:
         logger.info(f"Gene-level outputs: {expression_outputs}")
@@ -316,17 +324,13 @@ def main_deseq2(args):
     
     # Validate input arguments
     if not args.salmon_dir and not args.gene_counts:
-        logger.error("Either --salmon-dir or --gene-counts must be provided")
-        sys.exit(1)
-    
+        raise ValueError("Either --salmon-dir or --gene-counts must be provided")
+
     if args.salmon_dir and args.gene_counts:
         logger.warning("Both --salmon-dir and --gene-counts provided. Using --salmon-dir with pytximport")
-    
-    # Setup work directory structure
-    workdirs = setup_workdir(args.work_dir)
-    
+
     # Use default 04_deseq2 directory if output_dir not specified
-    output_dir = Path(args.output_dir) if args.output_dir else workdirs['deseq2']
+    output_dir = Path(args.output_dir) if args.output_dir else Path(args.work_dir) / "04_deseq2"
     output_dir.mkdir(parents=True, exist_ok=True)
     args.output_dir = str(output_dir)
     
@@ -346,8 +350,7 @@ def main_wgcna(args):
     logger.info("="*60)
     
     if not args.expression:
-        logger.error("Expression file must be provided")
-        sys.exit(1)
+        raise ValueError("Expression file must be provided")
     
     try:
         analyzer = run_wgcna_cli(args)
@@ -430,9 +433,9 @@ def main_all(args):
         gtf_file=gtf_file,
         tx2gene=args.tx2gene,
         sample_names=[sample_name for sample_name, _, _ in samples_list],
-        merge_sf=getattr(args, "merge_sf", False),
+        merge_sf=args.merge_sf,
     )
-    
+
     # Step 2: Run DESeq2
     logger.info("="*60)
     logger.info("Step 2: DESeq2 Differential Expression Analysis")
@@ -449,8 +452,8 @@ def main_all(args):
         design=args.design,
         contrast=args.contrast,
         alpha=args.alpha,
-        lfc_threshold=getattr(args, 'lfc_threshold', 2.0),
-        prefilter_min_count=getattr(args, 'prefilter_min_count', 10),
+        lfc_threshold=args.lfc_threshold,
+        prefilter_min_count=args.prefilter_min_count,
         threads=cap_threads_to_available_cpus(args.threads)
     )
     
@@ -691,12 +694,9 @@ Examples:
     args = parser.parse_args()
     if vars(args) == {}:
         parser.print_help(sys.stderr)
+        parser.exit(2)
     else:
-        try:
-            args.func(args)
-        except Exception as e:
-            logger.error(f"Error: {e}")
-            raise
+        args.func(args)
 
 
 if __name__ == "__main__":

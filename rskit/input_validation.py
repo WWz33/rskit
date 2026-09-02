@@ -72,10 +72,9 @@ def _validate_gene_by_sample_table(
 ) -> Tuple[int, int]:
     metadata_samples = {str(sample_id) for sample_id in metadata.index}
     table_rows = {str(sample_id) for sample_id in table.index}
-    table_columns = {str(column) for column in table.columns}
 
-    appears_samples_by_genes = metadata_samples.issubset(table_rows) and not metadata_samples.issubset(table_columns)
-    if appears_samples_by_genes:
+    # samples as rows wins even when they also appear as columns (square matrices)
+    if metadata_samples.issubset(table_rows):
         logger.warning(
             f"{table_name} appears to be samples x genes, but rskit expects "
             "genes x samples for user input; please transpose the file."

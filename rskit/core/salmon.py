@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
+import gzip
 
 import numpy as np
 import pandas as pd
@@ -12,6 +13,17 @@ from rskit.utils.logger import get_logger
 from rskit.utils.validators import validate_file
 
 logger = get_logger(__name__)
+
+
+def _gff3_value(value: Optional[str], prefix: str) -> Optional[str]:
+    """Extract a GFF3 ID/Parent value, stripping the 'transcript:'/'gene:' prefix."""
+    if not value:
+        return None
+    value = value.split(",")[0].strip()
+    tag = prefix + ":"
+    if value.startswith(tag):
+        value = value[len(tag):]
+    return value or None
 
 SALMON_QUANT_PROTECTED_OPTIONS = {
     "-t",
@@ -40,7 +52,8 @@ class SalmonQuantifier:
         output_path = Path(output_dir)
         quant_file = output_path / "quant.sf"
         
-        if skip_if_exists and quant_file.exists():
+        # only trust a non-empty quant.sf (a crashed run can leave a truncated file)
+        if skip_if_exists and quant_file.exists() and quant_file.stat().st_size > 0:
             self.logger.info(f"Quantification output already exists at {output_dir}, skipping")
             return {"quant": str(quant_file), "lib_format_counts": str(output_path / "lib_format_counts.json")}
         
@@ -76,11 +89,23 @@ class SalmonExpressionExporter:
         tx2gene_map = {}
         num_records = 0
 
-        with open(gtf_file, "r", encoding="utf-8", errors="ignore") as reader:
+        opener = gzip.open if str(gtf_file).endswith(".gz") else open
+        with opener(gtf_file, "rt", encoding="utf-8", errors="ignore") as reader:
             for rec in gtf_open(reader, "ensembl"):
                 num_records += 1
-                if rec.feature == "transcript" and rec.transcript_id and rec.gene_id:
-                    tx2gene_map.setdefault(rec.transcript_id, rec.gene_id)
+                if rec.feature != "transcript":
+                    continue
+                meta = rec.meta or {}
+                transcript_id = meta.get("transcript_id") or _gff3_value(meta.get("ID"), "transcript")
+                gene_id = meta.get("gene_id") or _gff3_value(meta.get("Parent"), "gene")
+                if transcript_id and gene_id:
+                    tx2gene_map.setdefault(transcript_id, gene_id)
+
+        if not tx2gene_map:
+            raise ValueError(
+                f"No transcript-to-gene mappings extracted from {gtf_file}; "
+                "check that it is a GTF/GFF3 with transcript records"
+            )
 
         self.logger.info(f"Scanned {num_records} GTF/GFF3 lines")
         self.logger.info(f"Extracted {len(tx2gene_map)} unique transcript-to-gene mappings")
@@ -114,9 +139,20 @@ class SalmonExpressionExporter:
             self.logger.info(f"Loaded tx2gene map from {tx2gene_path}")
 
             if "transcript_id" not in tx2gene_map.columns or "gene_id" not in tx2gene_map.columns:
+                # headerless files are common; pandas treats their first row as column names
+                if tx2gene_map.columns.astype(str).str.match(r"^\w*(ENST|ENSG)\d").all():
+                    tx2gene_map = pd.read_csv(tx2gene_path, sep=separator, header=None)
                 if len(tx2gene_map.columns) < 2:
                     raise ValueError("tx2gene map must have at least 2 columns (transcript_id, gene_id)")
                 tx2gene_map = tx2gene_map.iloc[:, :2].copy()
+                # recover gene-first ordering (e.g. ENSG,ENST)
+                first_column = tx2gene_map.iloc[:, 0].astype(str)
+                second_column = tx2gene_map.iloc[:, 1].astype(str)
+                if (
+                    first_column.str.match(r"^ENSG\d").mean() > 0.5
+                    and second_column.str.match(r"^\w*ENST").mean() > 0.5
+                ):
+                    tx2gene_map = tx2gene_map.iloc[:, [1, 0]]
                 tx2gene_map.columns = ["transcript_id", "gene_id"]
                 self.logger.warning("Renamed tx2gene columns to transcript_id and gene_id")
 
@@ -160,6 +196,12 @@ class SalmonExpressionExporter:
         if not file_paths:
             raise FileNotFoundError(f"No files named {sample_pattern!r} found under {salmon_dir}")
 
+        duplicated = sorted({n for n in resolved_sample_names if resolved_sample_names.count(n) > 1})
+        if duplicated:
+            raise ValueError(
+                "Duplicate sample names from nested quant directories: " + ", ".join(duplicated)
+            )
+
         return file_paths, resolved_sample_names
 
     def _to_dataframe(self, dataset, field: str, sample_names: Sequence[str]) -> pd.DataFrame:
@@ -176,7 +218,9 @@ class SalmonExpressionExporter:
         output_dir: Optional[str] = None,
         sample_names: Optional[Sequence[str]] = None,
         sample_pattern: str = "quant.sf",
-        ignore_transcript_version: bool = False,
+        # Ensembl quant.sf carries versioned transcript IDs while GTF-derived tx2gene
+        # maps do not; stripping versions is the only combination that matches out of the box
+        ignore_transcript_version: bool = True,
     ) -> Dict[str, pd.DataFrame]:
         try:
             from pytximport import tximport
@@ -230,7 +274,7 @@ class SalmonExpressionExporter:
         tx2gene: Optional[str] = None,
         sample_names: Optional[Sequence[str]] = None,
         sample_pattern: str = "quant.sf",
-        ignore_transcript_version: bool = False,
+        ignore_transcript_version: bool = True,
     ) -> Dict[str, str]:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)

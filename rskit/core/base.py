@@ -22,8 +22,12 @@ class ToolBase(ABC):
             self.logger.info("Command completed successfully")
             return True
         except subprocess.CalledProcessError as e:
-            self.logger.error(f"Command failed: {e.stderr}")
-            raise RuntimeError(f"Tool execution failed: {e.stderr}")
+            stderr = (e.stderr or "").strip()
+            self.logger.error(f"Command failed (exit {e.returncode}): {stderr}")
+            raise RuntimeError(
+                f"{self.tool_name} failed with exit code {e.returncode}: "
+                f"{' '.join(map(str, e.cmd))}\n{stderr}"
+            ) from e
     
     @abstractmethod
     def validate_inputs(self) -> bool:

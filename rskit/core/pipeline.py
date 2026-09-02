@@ -1,8 +1,9 @@
 from pathlib import Path
 from typing import Dict, List, Optional
+import pandas as pd
 from rskit.config import PipelineConfig
 from rskit.core.star import StarIndexer, StarAligner
-from rskit.core.salmon import SalmonQuantifier
+from rskit.core.salmon import SalmonExpressionExporter, SalmonQuantifier
 from rskit.core.deseq2 import Deseq2Analyzer
 from rskit.utils.logger import get_logger
 from rskit.utils.validators import check_star_index
@@ -29,8 +30,11 @@ class RNAseqPipeline:
         quant_path.mkdir(parents=True, exist_ok=True)
 
         self.logger.info(f"Checking STAR index at {index_dir}")
-        if not Path(index_dir).exists() or not check_star_index(index_dir):
-            self.logger.info("Index not found, building...")
+        if force_index or not Path(index_dir).exists() or not check_star_index(index_dir):
+            if force_index:
+                self.logger.info(f"Force rebuilding STAR index at {index_dir}")
+            else:
+                self.logger.info("Index not found, building...")
             self.indexer.build_index(genome_fasta, gtf_file, index_dir, force=force_index)
         else:
             self.logger.info("Index found, skipping build")
@@ -78,28 +82,24 @@ class RNAseqPipeline:
         # Run standard pipeline
         results = self.run(samples, genome_fasta, gtf_file, transcript_fasta,
                           index_dir, output_dir, quant_output_dir, force_index)
-        
+
         # Prepare data for DESeq2 analysis
         sample_names = list(samples.keys())
-        
-        # Create counts DataFrame from Salmon results
-        import pandas as pd
-        counts_data = {}
-        for sample_name in sample_names:
-            quant_file = Path(quant_output_dir) / sample_name / "quant.sf"
-            if quant_file.exists():
-                quant_df = pd.read_csv(quant_file, sep='\t')
-                gene_counts = quant_df.groupby('Name')['NumReads'].sum()
-                counts_data[sample_name] = gene_counts
-        
-        counts_df = pd.DataFrame(counts_data).T.fillna(0).astype(int)
-        
-        # Create metadata DataFrame
-        metadata_df = pd.DataFrame({
-            'sample': sample_names,
-            'condition': [metadata.get(sample_name, 'unknown') for sample_name in sample_names]
-        })
-        metadata_df = metadata_df.set_index('sample')
+
+        # Gene-level counts from Salmon outputs (genes x samples -> samples x genes)
+        counts_df = SalmonExpressionExporter().build_gene_tables(
+            salmon_dir=str(quant_output_dir),
+            gtf_file=gtf_file,
+            sample_names=sample_names,
+        )["counts"].T.round().astype(int)
+        counts_df.index.name = "sample"
+
+        # Align metadata to the samples that actually produced quant outputs
+        metadata_df = pd.DataFrame(
+            {"condition": [metadata.get(sample_name, "unknown") for sample_name in counts_df.index]},
+            index=counts_df.index,
+        )
+        metadata_df.index.name = "sample"
         
         # Run DESeq2 analysis
         deseq2_output_dir = Path(output_dir) / "deseq2"

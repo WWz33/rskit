@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Optional
+import shutil
 from rskit.cli_args import merge_extra_args
 from rskit.core.base import ToolBase, Tool
 from rskit.config import StarConfig
@@ -14,6 +15,7 @@ STAR_INDEX_PROTECTED_OPTIONS = {
 }
 
 STAR_ALIGN_PROTECTED_OPTIONS = {
+    "--runMode",
     "--runThreadN",
     "--genomeDir",
     "--readFilesIn",
@@ -34,13 +36,15 @@ class StarIndexer:
         validate_file(gtf_file)
         index_path = Path(index_dir)
         
-        if index_path.exists() and check_star_index(index_dir):
-            if not force:
-                self.logger.info(f"STAR index already exists at {index_dir}, skipping")
-                return True
-            else:
-                self.logger.info(f"Force rebuilding STAR index at {index_dir}")
-        
+        if index_path.exists() and check_star_index(index_dir) and not force:
+            self.logger.info(f"STAR index already exists at {index_dir}, skipping")
+            return True
+
+        # STAR genomeGenerate refuses a non-empty --genomeDir, so clear stale/partial indexes first
+        if index_path.exists():
+            self.logger.info(f"Clearing existing index directory {index_dir}")
+            shutil.rmtree(index_path)
+
         index_path.mkdir(parents=True, exist_ok=True)
         cmd = ["STAR", "--runThreadN", str(self.config.threads), "--runMode", "genomeGenerate",
                "--genomeDir", str(index_path), "--genomeFastaFiles", genome_fasta,
@@ -73,7 +77,9 @@ class StarAligner:
         output_path = Path(output_prefix).parent
         output_path.mkdir(parents=True, exist_ok=True)
         
-        # 检测输入文件格式
+        # 检测输入文件格式；两段 read 压缩格式必须一致，否则 STAR 会对纯文本跑 zcat
+        if fq1.endswith(".gz") != fq2.endswith(".gz"):
+            raise ValueError(f"Mates must both be gzipped or both plain: {fq1}, {fq2}")
         read_cmd = 'zcat' if fq1.endswith('.gz') else 'cat'
         
         cmd = ["STAR", "--runThreadN", str(self.config.threads), "--genomeDir", index_dir,

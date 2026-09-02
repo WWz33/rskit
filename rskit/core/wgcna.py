@@ -73,6 +73,7 @@ class WGCNAAnalyzer:
             geneExp=gene_expr,
             geneInfo=gene_info,
             sampleInfo=sample_info,
+            powers=[self.power] if self.power is not None else None,
             TPMcutoff=self.tpm_cutoff,
             networkType=self.network_type,
             TOMType=self.tom_type,

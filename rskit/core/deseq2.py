@@ -45,6 +45,22 @@ def parse_contrast(contrast_value: Optional[str], metadata_df: pd.DataFrame) -> 
     return contrast
 
 
+def _lfc_shrink_coefficient(contrast: List[str], lfc_columns) -> Optional[str]:
+    """Resolve the pydeseq2 LFC coefficient column for a (factor, tested, reference) contrast.
+
+    pydeseq2 names LFC columns after the design matrix (e.g. 'condition[T.treat]' via
+    formulaic), so match the contrast against known naming schemes instead of guessing.
+    """
+    factor, tested, reference = contrast[0], contrast[1], contrast[2]
+    candidates = (
+        f"{factor}[T.{tested}]",
+        f"{factor}_{tested}_vs_{reference}",
+        f"{factor}[{tested}]",
+        factor,
+    )
+    return next((name for name in candidates if name in lfc_columns), None)
+
+
 def write_manifest(output_dir: Path, manifest: Dict) -> Path:
     """Write a JSON run manifest and return its path."""
     manifest_path = output_dir / "manifest.json"
@@ -76,6 +92,8 @@ class Deseq2Analyzer:
         self.expression_exporter = SalmonExpressionExporter()
         self.dds = None
         self.stats_results = None
+        self.stat_res = None
+        self.contrast = None
         self.counts_df = None
         self.metadata_df = None
         
@@ -250,16 +268,24 @@ class Deseq2Analyzer:
         stat_res.summary()
         
         # Store results
+        self.stat_res = stat_res
+        self.contrast = contrast
         self.stats_results = stat_res.results_df
-        
+
         # Apply LFC shrinkage
         try:
-            coeff = f"{contrast[0]}_{contrast[1]}_vs_{contrast[2]}"
-            stat_res.lfc_shrink(coeff=coeff)
-            self.logger.info(f"LFC shrinkage applied for coefficient: {coeff}")
+            coeff = _lfc_shrink_coefficient(contrast, stat_res.LFC.columns)
+            if coeff is None:
+                self.logger.warning(
+                    f"Could not apply LFC shrinkage: no coefficient for contrast {contrast} "
+                    f"in LFC columns {list(stat_res.LFC.columns)}"
+                )
+            else:
+                stat_res.lfc_shrink(coeff=coeff)
+                self.logger.info(f"LFC shrinkage applied for coefficient: {coeff}")
         except Exception as e:
             self.logger.warning(f"Could not apply LFC shrinkage: {e}")
-        
+
         return self.stats_results
     
     def _infer_contrast(self) -> List[str]:
@@ -378,23 +404,16 @@ class Deseq2Analyzer:
         return str(counts_file)
     
     def plot_ma(self, save_path: Optional[str] = None) -> None:
-        """Create MA plot.
-        
+        """Create MA plot from the fitted DeseqStats object.
+
         Args:
             save_path: Path to save the plot
         """
-        if self.dds is None or self.stats_results is None:
+        if self.stat_res is None:
             raise ValueError("No results to plot. Run analyze() first.")
-        
+
         try:
-            from pydeseq2.ds import DeseqStats
-            stat_res = DeseqStats(
-                dds=self.dds,
-                contrast=self.stats_results.columns[0],
-                alpha=self.config.alpha
-            )
-            stat_res.results_df = self.stats_results
-            stat_res.plot_MA(save_path=save_path)
+            self.stat_res.plot_MA(save_path=save_path)
         except Exception as e:
             self.logger.error(f"Error creating MA plot: {e}")
     
@@ -415,34 +434,32 @@ class Deseq2Analyzer:
             
             # Plot non-significant genes
             non_sig = self.stats_results[self.stats_results['padj'] >= self.config.alpha]
-            ax.scatter(non_sig['log2FoldChange'], -np.log10(non_sig['pvalue']), 
+            ax.scatter(non_sig['log2FoldChange'], -np.log10(non_sig['pvalue']),
                       alpha=0.5, label='Non-significant', color='gray', s=10)
-            
-            # Plot significant up-regulated genes
+
+            # Plot significant up-regulated genes (same criteria as save_results)
             sig_up = self.stats_results[
-                (self.stats_results['padj'] < self.config.alpha) & 
-                (self.stats_results['log2FoldChange'] > 0)
+                (self.stats_results['padj'] < self.config.alpha) &
+                (self.stats_results['log2FoldChange'] > self.config.lfc_threshold)
             ]
-            ax.scatter(sig_up['log2FoldChange'], -np.log10(sig_up['pvalue']), 
+            ax.scatter(sig_up['log2FoldChange'], -np.log10(sig_up['pvalue']),
                       alpha=0.7, label='Up-regulated', color='red', s=20)
-            
+
             # Plot significant down-regulated genes
             sig_down = self.stats_results[
-                (self.stats_results['padj'] < self.config.alpha) & 
-                (self.stats_results['log2FoldChange'] < 0)
+                (self.stats_results['padj'] < self.config.alpha) &
+                (self.stats_results['log2FoldChange'] < -self.config.lfc_threshold)
             ]
-            ax.scatter(sig_down['log2FoldChange'], -np.log10(sig_down['pvalue']), 
+            ax.scatter(sig_down['log2FoldChange'], -np.log10(sig_down['pvalue']),
                       alpha=0.7, label='Down-regulated', color='blue', s=20)
-            
+
             # Add labels and title
             ax.set_xlabel('log2 Fold Change', fontsize=12)
             ax.set_ylabel('-log10(p-value)', fontsize=12)
             ax.set_title('Volcano Plot', fontsize=14)
             ax.legend(loc='upper right')
             ax.grid(True, alpha=0.3)
-            
-            # Add threshold lines
-            ax.axhline(y=-np.log10(self.config.alpha), color='blue', linestyle='--', alpha=0.5, label=f'p={self.config.alpha}')
+
             ax.axvline(x=0, color='black', linestyle='-', alpha=0.3)
             
             plt.tight_layout()

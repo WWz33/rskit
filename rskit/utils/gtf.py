@@ -27,7 +27,7 @@ attr_format: setting the attribute format to 'ensembl' will use a simplified, an
 import re
 from pathlib import Path
 
-re_attrs = re.compile(r'(\w+)(?:\s*=\s*|\s+)(?:"(.*?)"|(.*?));\s*')
+re_attrs = re.compile(r'(\w+)(?:\s*=\s*|\s+)(?:"(.*?)"|(.*?))(?:;\s*|$)')
 id_keys = [
     ('gene_id', 'gene_version'),
     ('transcript_id', 'transcript_version'),
@@ -45,9 +45,12 @@ id_keys = [
 
 
 def iter_records(reader, attr_format=None, keep_line=False, append_versions=False):
-    # strip only line terminators; by default, rstrip() will remove trailing tabs
-    lines = (line.rstrip('\r\n') for line in reader if not line[0] == '#')
-    for line in lines:
+    for line in reader:
+        line = line.rstrip('\r\n')
+        if not line or line[0] == '#':
+            continue
+        if line.count('\t') < 8:
+            continue
         rec = parse_line(line, attr_format, append_versions)
         yield (rec, line) if keep_line else rec
 
@@ -59,7 +62,7 @@ def open(reader, attr_format=None, keep_line=False, append_versions=False):
 def parse_line(line, attr_format=None, append_versions=False):
 
     # 8 splits, 9 fields; attribute field may include tabs
-    cols = [f if f != '.' else None for f in line.split('\t', 8)]
+    cols = [f if f not in ('.', '') else None for f in line.split('\t', 8)]
 
     rec = GtfRecord()
     rec.chr = cols[0]
@@ -72,10 +75,17 @@ def parse_line(line, attr_format=None, append_versions=False):
     rec.frame = int(cols[7]) if cols[7] is not None else None
 
     if attr_format == 'ensembl':
-        rec.meta = dict((t, v[1:-1]) for t, v in (tag.split(' ', 1) for tag in cols[8].rstrip(';').split('; ')))
+        # tolerate both GTF ("key value; ") and GFF3 ("key=value;") attribute styles
+        rec.meta = {}
+        for tag in (cols[8] or '').split(';'):
+            key, sep, value = tag.strip().partition('=')
+            if not sep:
+                key, _, value = tag.strip().partition(' ')
+            key, value = key.strip(), value.strip().strip('"')
+            if key:
+                rec.meta[key] = value
 
         if append_versions:
-            keys = [k for k in rec.meta.keys() if k.endswith('_id')]
             for key, ver in id_keys:
                 if key in rec.meta and ver in rec.meta:
                     rec.meta[key] = rec.meta[key] + '.' + rec.meta.pop(ver)
@@ -133,7 +143,10 @@ def gtf_tx2gene(args):
                 num_records += 1
 
                 if rec.feature == 'transcript':
-                    writer.write(rec.meta['transcript_id'] + ',' + rec.meta['gene_id'] + '\n')
-                    num_written += 1
+                    transcript_id = rec.meta.get('transcript_id')
+                    gene_id = rec.meta.get('gene_id')
+                    if transcript_id and gene_id:
+                        writer.write(transcript_id + ',' + gene_id + '\n')
+                        num_written += 1
 
     return dict(records=num_records, written=num_written)

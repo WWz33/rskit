@@ -87,6 +87,25 @@ class FastpArgsTests(unittest.TestCase):
                     fastp_args="--out1=other_R1.fq.gz",
                 )
 
+from rskit.cli import trim_reads
+from rskit.cli_args import merge_extra_args
+
+
+class PassthroughGuardTests(unittest.TestCase):
+    def test_protected_options_block_prefix_and_attached_forms(self) -> None:
+        # salmon/boost accepts unambiguous prefixes; short flags accept attached values
+        for sneaky in ("--thre 4", "-p8", "--thread 4"):
+            with self.assertRaisesRegex(ValueError, "Protected options"):
+                merge_extra_args(
+                    ["salmon", "quant", "-p", "8"], sneaky, {"-p", "--threads"}
+                )
+
+    def test_unprotected_passthrough_args_still_merge(self) -> None:
+        merged = merge_extra_args(
+            ["salmon", "quant", "-p", "8"], "--minScoreFraction 0.95", {"-p", "--threads"}
+        )
+        self.assertEqual(merged, ["salmon", "quant", "-p", "8", "--minScoreFraction", "0.95"])
+
 
 if __name__ == "__main__":
     unittest.main()

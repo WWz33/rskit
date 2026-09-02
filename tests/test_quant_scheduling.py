@@ -70,6 +70,45 @@ class QuantSchedulingTests(unittest.TestCase):
         self.assertEqual(FakeExecutor.max_workers, 2)
         self.assertEqual(sorted(results), ["sample1", "sample2", "sample3"])
 
+    def test_run_samples_parallel_names_failed_sample_and_keeps_completed(self) -> None:
+        samples = {
+            "sample1": {"fq1": "r1", "fq2": "r2"},
+            "bad": {"fq1": "r1", "fq2": "r2"},
+            "sample3": {"fq1": "r1", "fq2": "r2"},
+        }
+
+        def fake_process(args):
+            if args[0] == "bad":
+                raise RuntimeError("STAR crashed")
+            return args[0], {"quantification": {}}
+
+        with mock.patch("rskit.utils.parallel.process_single_sample", side_effect=fake_process):
+            with self.assertRaises(RuntimeError) as ctx:
+                run_samples_parallel(
+                    samples=samples,
+                    index_dir="index",
+                    transcript_fasta="transcripts.fa",
+                    workdirs={"bam": "bam", "quant": "quant"},
+                    threads_per_sample=4,
+                    jobs=2,
+                )
+
+        self.assertIn("bad", str(ctx.exception))
+        self.assertIn("sample", str(ctx.exception))  # failed sample(s) are named in the error
+
+    def test_run_samples_parallel_handles_empty_samples(self) -> None:
+        self.assertEqual(
+            run_samples_parallel(
+                samples={},
+                index_dir="index",
+                transcript_fasta="transcripts.fa",
+                workdirs={"bam": "bam", "quant": "quant"},
+                threads_per_sample=4,
+                jobs=2,
+            ),
+            {},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

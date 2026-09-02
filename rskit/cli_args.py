@@ -24,7 +24,7 @@ def merge_extra_args(
         return list(default_args)
 
     protected = set(protected_options)
-    user_options = _option_names(user_args)
+    user_options = _canonical_options(_option_names(user_args), protected)
     blocked = sorted(user_options & protected)
     if blocked:
         blocked_text = ", ".join(blocked)
@@ -37,6 +37,25 @@ def merge_extra_args(
 
 def _option_names(args: Sequence[str]) -> Set[str]:
     return {_option_name(arg) for arg in args if _is_option(arg)}
+
+
+def _canonical_options(options: Set[str], protected: Set[str]) -> Set[str]:
+    """Expand attached short values and long-option prefixes to protected full names.
+
+    Target tools accept them (salmon/boost guess unambiguous prefixes, short flags
+    accept attached values like `-p8`), so the guard must recognize them too.
+    """
+    canonical = set(options)
+    for option in options:
+        if option in protected:
+            continue
+        if not option.startswith("--"):
+            token = option[:2] if len(option) > 2 else option
+            if token in protected:
+                canonical.add(token)
+            continue
+        canonical.update(p for p in protected if p.startswith(option))
+    return canonical
 
 
 def _remove_replaced_defaults(
