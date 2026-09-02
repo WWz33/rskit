@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from rskit.utils.logger import get_logger
@@ -6,14 +7,12 @@ class ToolBase(ABC):
     def __init__(self, tool_name: str):
         self.tool_name = tool_name
         self.logger = get_logger(self.__class__.__name__)
-    
+
     def _check_tool_installed(self) -> bool:
-        try:
-            subprocess.run([self.tool_name, "--version"], capture_output=True, check=False)
-            return True
-        except FileNotFoundError:
+        if shutil.which(self.tool_name) is None:
             self.logger.error(f"{self.tool_name} not found in PATH")
             return False
+        return True
     
     def _run_command(self, cmd: list, cwd: str = None) -> bool:
         try:
