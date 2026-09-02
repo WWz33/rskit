@@ -35,9 +35,30 @@ class SalmonQuantifierTests(unittest.TestCase):
         self.assertIn("-a", command)
         self.assertIn("--seqBias", command)
         self.assertIn("--gcBias", command)
-        self.assertIn("--posBias", command)
+        self.assertNotIn("--posBias", command)  # experimental upstream; off by default
         self.assertNotIn("--validateMappings", command)
         self.assertEqual(result["quant"], str(output_dir / "quant.sf"))
+
+    def test_salmon_args_enable_positional_bias(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            transcript_fasta = root / "transcripts.fa"
+            bam_file = root / "sample.bam"
+            transcript_fasta.write_text(">tx1\nACGT\n", encoding="utf-8")
+            bam_file.write_text("stub", encoding="utf-8")
+
+            quantifier = SalmonQuantifier(SalmonConfig(threads=8, pos_bias=True))
+
+            with mock.patch("rskit.core.base.Tool._run_command", return_value=True) as run_command:
+                quantifier.quantify(
+                    transcript_fasta=str(transcript_fasta),
+                    bam_file=str(bam_file),
+                    output_dir=str(root / "quant"),
+                    sample_name="sample1",
+                    skip_if_exists=False,
+                )
+
+        self.assertIn("--posBias", run_command.call_args.args[0])
 
     def test_salmon_args_append_advanced_options(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

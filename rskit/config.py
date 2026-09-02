@@ -25,7 +25,9 @@ class SalmonConfig:
     lib_type: str = "A"
     seq_bias: bool = True
     gc_bias: bool = True
-    pos_bias: bool = True
+    # positional-bias model targets 5'/3' coverage skew (QuantSeq-style protocols)
+    # and is marked experimental upstream; enable via --salmon-args "--posBias"
+    pos_bias: bool = False
     extra_args: str = ""
 
 @dataclass
