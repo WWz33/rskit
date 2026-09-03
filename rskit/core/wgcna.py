@@ -126,24 +126,6 @@ class WGCNAAnalyzer:
         
         return self.wgcna_obj
         
-    def save_results(self, filename=None):
-        """Save WGCNA object and results"""
-        if self.wgcna_obj is None:
-            logger.error("No WGCNA object to save.")
-            return
-            
-        if filename is None:
-            filename = f"{self.name}.p"
-            
-        output_path = self.output_dir / filename
-        logger.info(f"Saving WGCNA results to {output_path}")
-        
-        import pickle
-        with open(output_path, 'wb') as f:
-            pickle.dump(self.wgcna_obj, f)
-            
-        logger.info(f"Results saved to {output_path}")
-        
     def get_module_info(self):
         """Get information about detected modules"""
         if self.wgcna_obj is None:
@@ -191,10 +173,7 @@ def run_wgcna_cli(args):
     
     # Run analysis
     wgcna_obj = analyzer.run_analysis(show=False)
-    
-    # Save results
-    analyzer.save_results()
-    
+
     # Print module information
     module_info = analyzer.get_module_info()
     if module_info is not None:

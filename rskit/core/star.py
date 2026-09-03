@@ -48,7 +48,8 @@ class StarIndexer:
         index_path.mkdir(parents=True, exist_ok=True)
         cmd = ["STAR", "--runThreadN", str(self.config.threads), "--runMode", "genomeGenerate",
                "--genomeDir", str(index_path), "--genomeFastaFiles", genome_fasta,
-               "--sjdbGTFfile", gtf_file, "--sjdbOverhang", str(self.config.sjdb_overhang)]
+               "--sjdbGTFfile", gtf_file, "--sjdbOverhang", str(self.config.sjdb_overhang),
+               "--outFileNamePrefix", str(index_path) + "/"]
         cmd = merge_extra_args(cmd, self.config.extra_args, STAR_INDEX_PROTECTED_OPTIONS)
         
         self.logger.info(f"Building STAR index in {index_dir}")

@@ -349,29 +349,34 @@ class Deseq2Analyzer:
         
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
-        
+
+        # name the index column so the CSV header reads gene_id,... like
+        # every other exported table
+        results = self.stats_results.copy()
+        results.index.name = "gene_id"
+
         saved_files = {}
-        
+
         # Save full results
         results_file = output_path / f"{prefix}_results.csv"
-        self.stats_results.to_csv(results_file)
+        results.to_csv(results_file)
         saved_files['results'] = str(results_file)
-        
+
         # Save significant genes (padj < alpha AND abs(log2FoldChange) > lfc_threshold)
-        sig_genes = self.stats_results[
-            (self.stats_results['padj'] < self.config.alpha) & 
-            (self.stats_results['log2FoldChange'].abs() > self.config.lfc_threshold)
+        sig_genes = results[
+            (results['padj'] < self.config.alpha) &
+            (results['log2FoldChange'].abs() > self.config.lfc_threshold)
         ]
         sig_file = output_path / f"{prefix}_significant.csv"
         sig_genes.to_csv(sig_file)
         saved_files['significant'] = str(sig_file)
-        
+
         # Save up-regulated genes
         up_genes = sig_genes[sig_genes['log2FoldChange'] > 0]
         up_file = output_path / f"{prefix}_upregulated.csv"
         up_genes.to_csv(up_file)
         saved_files['upregulated'] = str(up_file)
-        
+
         # Save down-regulated genes
         down_genes = sig_genes[sig_genes['log2FoldChange'] < 0]
         down_file = output_path / f"{prefix}_downregulated.csv"
@@ -380,28 +385,6 @@ class Deseq2Analyzer:
         
         self.logger.info(f"Results saved to {output_dir}")
         return saved_files
-    
-    def save_gene_counts(self, output_dir: str, prefix: str = "gene_counts") -> str:
-        """Save gene counts matrix.
-        
-        Args:
-            output_dir: Output directory
-            prefix: File prefix
-            
-        Returns:
-            Path to saved file
-        """
-        if self.counts_df is None:
-            raise ValueError("No counts data to save.")
-        
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-        
-        counts_file = output_path / f"{prefix}.csv"
-        self.counts_df.to_csv(counts_file)
-        
-        self.logger.info(f"Gene counts saved to {counts_file}")
-        return str(counts_file)
     
     def plot_ma(self, save_path: Optional[str] = None) -> None:
         """Create MA plot from the fitted DeseqStats object.
@@ -657,14 +640,17 @@ def run_deseq2_cli(args):
     
     # Generate plots
     logger.info("Generating plots...")
-    
-    # Volcano plot
-    volcano_path = output_dir / "volcano_plot.pdf"
-    analyzer.plot_volcano(str(volcano_path))
-    
-    # PCA plot
-    pca_path = output_dir / "pca_plot.pdf"
-    analyzer.plot_pca(str(pca_path))
+
+    plot_paths = {
+        "volcano_plot": output_dir / "deseq2_volcano_plot.pdf",
+        "pca_plot": output_dir / "deseq2_pca_plot.pdf",
+        "ma_plot": output_dir / "deseq2_ma_plot.pdf",
+    }
+    analyzer.plot_volcano(str(plot_paths["volcano_plot"]))
+    analyzer.plot_pca(str(plot_paths["pca_plot"]))
+    analyzer.plot_ma(str(plot_paths["ma_plot"]))
+    # plot helpers log-and-continue on failure; only record files that exist
+    written_plots = {name: str(path) for name, path in plot_paths.items() if path.exists()}
     
     # Print summary
     summary = analyzer.get_summary()
@@ -698,8 +684,7 @@ def run_deseq2_cli(args):
             "summary": summary,
             "outputs": {
                 **saved_files,
-                "volcano_plot": str(volcano_path),
-                "pca_plot": str(pca_path),
+                **written_plots,
             },
         },
     )

@@ -318,6 +318,7 @@ class QuantExpressionTests(unittest.TestCase):
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.save_results", return_value={}), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_volcano"), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_pca"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_ma"), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.get_summary", return_value={
                  "total_genes": 1,
                  "significant_genes": 0,
@@ -380,6 +381,7 @@ class QuantExpressionTests(unittest.TestCase):
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.save_results", return_value={}), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_volcano"), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_pca"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_ma"), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.get_summary", return_value={
                  "total_genes": 1,
                  "significant_genes": 0,
@@ -483,6 +485,7 @@ class QuantExpressionTests(unittest.TestCase):
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.save_results", return_value={}), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_volcano"), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_pca"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_ma"), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.get_summary", return_value={
                  "total_genes": 1,
                  "significant_genes": 0,
@@ -593,6 +596,7 @@ class QuantExpressionTests(unittest.TestCase):
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.save_results", return_value={"results": str(output_dir / "deseq2_results.csv")}), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_volcano"), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_pca"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_ma"), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.get_summary", return_value={
                  "total_genes": 1,
                  "significant_genes": 0,

@@ -356,7 +356,6 @@ analyzer.load_data(
 )
 
 wgcna_obj = analyzer.run_analysis()
-analyzer.save_results()
 ```
 
 ## Output Structure
@@ -389,11 +388,13 @@ results/
 ```text
 04_deseq2/
 ├── deseq2_results.csv
-├── gene_counts.csv
+├── deseq2_significant.csv
+├── deseq2_upregulated.csv
+├── deseq2_downregulated.csv
 ├── manifest.json
-├── pca_plot.pdf
-├── volcano_plot.pdf
-└── ma_plot.pdf
+├── deseq2_volcano_plot.pdf
+├── deseq2_pca_plot.pdf
+└── deseq2_ma_plot.pdf
 ```
 
 `manifest.json` records the DESeq2 inputs, resolved counts file, sample IDs, design, contrast, summary, and key output files.
@@ -403,6 +404,5 @@ results/
 ```text
 wgcna_results/
 ├── figures/
-├── WGCNA.p
 └── module_info.csv
 ```
