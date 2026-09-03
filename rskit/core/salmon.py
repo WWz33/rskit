@@ -308,11 +308,27 @@ class SalmonExpressionExporter:
 
     @staticmethod
     def find_existing_gene_counts(salmon_dir: str) -> Optional[Path]:
+        """Return a reusable gene counts file, or None if missing or stale.
+
+        Stale means older than any quant.sf under salmon_dir: re-running quant
+        must invalidate previously exported gene-level tables.
+        """
         salmon_path = Path(salmon_dir)
         for candidate in ("gene_counts.csv", "gene_counts.tsv"):
             counts_path = salmon_path / candidate
-            if counts_path.exists():
-                return counts_path
+            if not counts_path.exists():
+                continue
+            newest_quant = max(
+                (q.stat().st_mtime for q in salmon_path.rglob("quant.sf")),
+                default=0.0,
+            )
+            if counts_path.stat().st_mtime < newest_quant:
+                logger.warning(
+                    f"{counts_path} is older than the newest quant.sf in {salmon_dir}; "
+                    "re-exporting gene-level tables"
+                )
+                return None
+            return counts_path
         return None
 
 

@@ -7,6 +7,9 @@ venv/
 data/raw/*
 data/reference/*
 data/results/*
+data/deseq2_*
+data/coldata.csv
+data/*.pdf
 logs/*
 *.log
 

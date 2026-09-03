@@ -377,6 +377,7 @@ analyzer.save_results()
 ```text
 results/
 ├── 00_index/
+├── 00_summary/          # 每样本一行 QC 指标（fastp/STAR/salmon）
 ├── 01_clean_data/
 ├── 02_bam/
 ├── 03_quant/

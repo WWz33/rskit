@@ -18,6 +18,7 @@ from rskit.core.wgcna import run_wgcna_cli
 from rskit.utils.logger import get_logger
 from rskit.utils.validators import check_and_prepare_index
 from rskit.utils.parallel import calculate_sample_plan, run_samples_parallel
+from rskit.utils.qc_summary import write_qc_summary
 from rskit.core.star import StarIndexer
 from rskit.core.salmon import SalmonExpressionExporter, merge_salmon_quant_tables
 
@@ -79,7 +80,8 @@ def setup_workdir(output_dir: str) -> Dict[str, Path]:
         'clean_data_json': output_path / '01_clean_data' / 'json',
         'bam': output_path / '02_bam',
         'quant': output_path / '03_quant',
-        'deseq2': output_path / '04_deseq2'
+        'deseq2': output_path / '04_deseq2',
+        'summary': output_path / '00_summary',
     }
     
     for d in dirs.values():
@@ -324,6 +326,7 @@ def main_quant(args):
     )
 
     logger.info(f"Pipeline completed. Processed {len(results)} samples.")
+    write_qc_summary(workdirs)
     if expression_outputs:
         logger.info(f"Gene-level outputs: {expression_outputs}")
 
@@ -441,6 +444,7 @@ def main_all(args):
                                  sample_plan.active_jobs, args.skip_existing,
                                  star_args=star_args, salmon_args=salmon_args)
     logger.info(f"Quantification completed. Processed {len(results)} samples.")
+    write_qc_summary(workdirs)
     expression_outputs = export_quant_expression_tables(
         quant_dir=workdirs['quant'],
         gtf_file=gtf_file,

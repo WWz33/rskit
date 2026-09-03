@@ -204,6 +204,31 @@ class SalmonQuantifierTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "No transcript-to-gene mappings"):
                 SalmonExpressionExporter()._create_tx2gene_from_gtf(str(empty_path))
 
+    def test_find_existing_gene_counts_rejects_stale_export(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            quant_dir = root / "03_quant"
+            sample_dir = quant_dir / "sample1"
+            sample_dir.mkdir(parents=True)
+            counts_file = quant_dir / "gene_counts.csv"
+            counts_file.write_text("gene_id,sample1\n", encoding="utf-8")
+
+            # counts exported before quant.sf existed -> stale -> re-export
+            import os, time
+            old = time.time() - 3600
+            os.utime(counts_file, (old, old))
+            (sample_dir / "quant.sf").write_text("stub", encoding="utf-8")
+
+            self.assertIsNone(
+                SalmonExpressionExporter.find_existing_gene_counts(str(quant_dir))
+            )
+
+            # counts newer than quant.sf -> reusable
+            newer = time.time() + 3600
+            os.utime(counts_file, (newer, newer))
+            found = SalmonExpressionExporter.find_existing_gene_counts(str(quant_dir))
+            self.assertEqual(found, counts_file)
+
 
 if __name__ == "__main__":
     unittest.main()
