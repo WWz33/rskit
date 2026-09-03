@@ -53,7 +53,6 @@ Generate a small `coldata` template instead of guessing column names.
 
 ```bash
 rskit template coldata -o coldata.csv
-rskit template contrast -o contrast.tsv
 ```
 
 ### I want to catch input problems before a long run

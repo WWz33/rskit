@@ -345,6 +345,7 @@ def main_deseq2(args):
     output_dir = Path(args.output_dir) if args.output_dir else Path(args.work_dir) / "04_deseq2"
     output_dir.mkdir(parents=True, exist_ok=True)
     args.output_dir = str(output_dir)
+    args.threads = cap_threads_to_available_cpus(args.threads)
     
     # Run DESeq2 analysis
     try:
@@ -635,7 +636,7 @@ Examples:
         help="Write example input template files",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser_template.add_argument("template_name", choices=["coldata", "contrast"],
+    parser_template.add_argument("template_name", choices=["coldata"],
         help="Template type to write")
     parser_template.add_argument("-o", "--output", required=True,
         help="Output template path; .csv writes CSV and .tsv/.txt writes TSV")

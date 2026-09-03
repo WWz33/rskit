@@ -28,15 +28,6 @@ class TemplateTests(unittest.TestCase):
         )
         self.assertEqual(table.loc[0, "sample"], "sample1")
 
-    def test_write_template_writes_contrast_tsv(self) -> None:
-        output = self.root / "contrast.tsv"
-
-        written = write_template("contrast", str(output))
-
-        table = pd.read_csv(written, sep="\t")
-        self.assertEqual(list(table.columns), ["factor", "level1", "level2"])
-        self.assertEqual(table.loc[0, "factor"], "condition")
-
     def test_write_template_does_not_overwrite_without_force(self) -> None:
         output = self.root / "coldata.csv"
         output.write_text("existing\n", encoding="utf-8")

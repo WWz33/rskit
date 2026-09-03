@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from rskit.input_contracts import load_coldata, read_table, validate_sample_alignment
+from rskit.input_contracts import load_coldata, read_table, samples_in_rows, validate_sample_alignment
 from rskit.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -93,11 +93,7 @@ class WGCNAAnalyzer:
     @staticmethod
     def _warn_if_expression_looks_samples_by_genes(gene_expr, sample_info):
         """Warn when a user expression matrix does not follow genes x samples."""
-        sample_ids = {str(sample_id) for sample_id in sample_info.index}
-        expression_rows = {str(sample_id) for sample_id in gene_expr.index}
-        expression_columns = {str(column) for column in gene_expr.columns}
-
-        if sample_ids.issubset(expression_rows) and not sample_ids.issubset(expression_columns):
+        if samples_in_rows(gene_expr, sample_info):
             logger.warning(
                 "WGCNA expression matrix appears to be samples x genes, but rskit expects "
                 "genes x samples for user input; please transpose the file."

@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional
 import pandas as pd
 import numpy as np
 from rskit.config import DESeq2Config
@@ -9,6 +9,7 @@ from rskit.input_contracts import (
     design_columns,
     load_coldata,
     read_table,
+    samples_in_rows,
     validate_sample_alignment,
 )
 from rskit.utils.logger import get_logger
@@ -115,10 +116,7 @@ class Deseq2Analyzer:
         counts_df = read_table(counts_file, index_col=0)
 
         if metadata_df is not None:
-            metadata_samples = {str(sample_id) for sample_id in metadata_df.index}
-            row_ids = {str(row_id) for row_id in counts_df.index}
-            column_ids = {str(column) for column in counts_df.columns}
-            if metadata_samples.issubset(row_ids) and not metadata_samples.issubset(column_ids):
+            if samples_in_rows(counts_df, metadata_df):
                 self.logger.warning(
                     "Counts matrix appears to be samples x genes, but rskit expects "
                     "genes x samples for user input; please transpose the file."
@@ -219,7 +217,17 @@ class Deseq2Analyzer:
             raise ValueError("No counts data provided. Load counts first.")
         if self.metadata_df is None:
             raise ValueError("No metadata provided. Load metadata first.")
-        
+
+        # Contrasts compare factor levels, so the contrast factor must be
+        # categorical; numeric coldata columns (condition = 0/1) fail inside
+        # formulaic otherwise. Coerce to string before building the design.
+        factor = contrast[0] if contrast else "condition"
+        if factor in self.metadata_df.columns and self.metadata_df[factor].map(
+            lambda value: not isinstance(value, str)
+        ).any():
+            self.logger.info(f"Coercing coldata column '{factor}' to string for contrast levels")
+            self.metadata_df[factor] = self.metadata_df[factor].astype(str)
+
         # Ensure sample names match
         validate_sample_alignment(self.counts_df, self.metadata_df, table_name="counts matrix")
         self.counts_df = self.counts_df.loc[self.metadata_df.index]
@@ -290,9 +298,9 @@ class Deseq2Analyzer:
     
     def _infer_contrast(self) -> List[str]:
         """Infer contrast from design matrix and metadata.
-        
-        For multi-factor designs, tries to find the main factor of interest.
-        Typically looks for 'condition' column or the column with most levels.
+
+        Prefers a 'condition' column; otherwise uses the first non-intercept
+        design column that names a categorical metadata column.
         """
         # First, try to use 'condition' column if it exists
         if 'condition' in self.metadata_df.columns:
@@ -302,37 +310,29 @@ class Deseq2Analyzer:
                 sorted_vals = sorted([str(v) for v in unique_vals])
                 self.logger.info(f"Using 'condition' column for contrast: {sorted_vals[-1]} vs {sorted_vals[0]}")
                 return ['condition', sorted_vals[-1], sorted_vals[0]]
-        
-        # If no 'condition' column, try to infer from design matrix
+
+        # Otherwise look for a usable design-matrix column
         design_cols = self.dds.obsm["design_matrix"].columns
-        if len(design_cols) > 1:
-            # Get the first non-intercept column
-            for col in design_cols[1:]:
-                # Try different parsing strategies for column names
-                # Strategy 1: column format like "condition[T.B]" or "condition[T.lhy-D]"
-                if '[T.' in col:
-                    factor_name = col.split('[T.')[0]
-                    # Extract level from "factor[T.level]"
-                    level = col.split('[T.')[1].rstrip(']')
-                    if factor_name in self.metadata_df.columns:
-                        unique_vals = sorted([str(v) for v in self.metadata_df[factor_name].unique()])
-                        if len(unique_vals) >= 2:
-                            ref_level = unique_vals[0]
-                            if level != ref_level:
-                                return [factor_name, level, ref_level]
-                
-                # Strategy 2: column format like "factor_level"
-                parts = col.split('_')
-                if len(parts) >= 2:
-                    factor_name = parts[0]
-                    if factor_name in self.metadata_df.columns:
-                        unique_vals = sorted([str(v) for v in self.metadata_df[factor_name].unique()])
-                        if len(unique_vals) >= 2:
-                            return [factor_name, unique_vals[-1], unique_vals[0]]
-            
-            raise ValueError("Cannot determine contrast from design matrix. Please specify --contrast manually.")
-        else:
+        if len(design_cols) <= 1:
             raise ValueError("Design matrix has only intercept. Please check your design formula.")
+        for col in design_cols[1:]:
+            # formulaic treatment coding, e.g. "condition[T.B]"
+            if '[T.' in col:
+                factor_name = col.split('[T.')[0]
+                level = col.split('[T.')[1].rstrip(']')
+                if factor_name in self.metadata_df.columns:
+                    unique_vals = sorted([str(v) for v in self.metadata_df[factor_name].unique()])
+                    if len(unique_vals) >= 2:
+                        ref_level = unique_vals[0]
+                        if level != ref_level:
+                            return [factor_name, level, ref_level]
+            # a column that names a metadata column outright (e.g. continuous coding)
+            elif col in self.metadata_df.columns:
+                unique_vals = sorted([str(v) for v in self.metadata_df[col].unique()])
+                if len(unique_vals) >= 2:
+                    return [col, unique_vals[-1], unique_vals[0]]
+
+        raise ValueError("Cannot determine contrast from design matrix. Please specify --contrast manually.")
     
     def save_results(self, output_dir: str, prefix: str = "deseq2") -> Dict[str, str]:
         """Save analysis results to files.
@@ -513,9 +513,14 @@ class Deseq2Analyzer:
             pca = PCA(n_components=2)
             pca_result = pca.fit_transform(log_counts_scaled)
             
-            # Get condition labels
-            if hasattr(self.dds, 'obs') and 'condition' in self.dds.obs.columns:
-                conditions = self.dds.obs['condition'].values
+            # Get condition labels: prefer the last design factor (the factor
+            # of interest by convention), then 'condition', else unlabeled
+            design_factor = design_columns(self.config.design)
+            color_column = design_factor[-1] if design_factor else 'condition'
+            if color_column not in self.dds.obs.columns:
+                color_column = 'condition' if 'condition' in self.dds.obs.columns else None
+            if color_column:
+                conditions = self.dds.obs[color_column].values
             else:
                 conditions = ['Unknown'] * len(pca_result)
             
@@ -600,8 +605,8 @@ def run_deseq2_cli(args):
     config = DESeq2Config(
         design=args.design,
         alpha=args.alpha,
-        lfc_threshold=getattr(args, 'lfc_threshold', 2.0),
-        prefilter_min_count=getattr(args, 'prefilter_min_count', 10),
+        lfc_threshold=args.lfc_threshold,
+        prefilter_min_count=args.prefilter_min_count,
         n_cpus=args.threads
     )
     
@@ -667,7 +672,10 @@ def run_deseq2_cli(args):
     logger.info("DESeq2 Analysis Summary")
     logger.info("="*50)
     logger.info(f"Total genes: {summary['total_genes']}")
-    logger.info(f"Significant genes (padj < {summary['alpha']}): {summary['significant_genes']}")
+    logger.info(
+        f"Significant genes (padj < {summary['alpha']} and |log2FC| > {summary['lfc_threshold']}): "
+        f"{summary['significant_genes']}"
+    )
     logger.info(f"  - Up-regulated: {summary['upregulated_genes']}")
     logger.info(f"  - Down-regulated: {summary['downregulated_genes']}")
     logger.info("="*50)

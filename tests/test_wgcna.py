@@ -138,6 +138,26 @@ class WGCNAAnalyzerTests(unittest.TestCase):
             )
         self.assertIsNone(fake_wgcna.call_args.kwargs["powers"])
 
+    def test_load_data_treats_square_matrix_with_samples_as_rows(self) -> None:
+        expression = self.root / "expression.csv"
+        # square 2x2: sample IDs appear as both rows and columns
+        pd.DataFrame(
+            {"sample1": [1.0, 2.0], "sample2": [3.0, 4.0]},
+            index=pd.Index(["sample1", "sample2"], name="sample"),
+        ).to_csv(expression)
+        coldata = self._write_coldata()
+
+        fake_wgcna = mock.Mock(return_value="wgcna-object")
+        fake_module = types.SimpleNamespace(WGCNA=fake_wgcna)
+
+        with mock.patch.dict(sys.modules, {"PyWGCNA": fake_module}):
+            analyzer = WGCNAAnalyzer(output_dir=str(self.root / "out"))
+            analyzer.load_data(str(expression), coldata=str(coldata))
+
+        passed_gene_expr = fake_wgcna.call_args.kwargs["geneExp"]
+        self.assertEqual(list(passed_gene_expr.index), ["sample1", "sample2"])
+        self.assertEqual(list(passed_gene_expr.columns), ["sample1", "sample2"])
+
 
 if __name__ == "__main__":
     unittest.main()

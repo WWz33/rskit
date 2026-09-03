@@ -7,6 +7,7 @@ from rskit.input_contracts import (
     load_coldata,
     read_table,
     resolve_path_from_table,
+    samples_in_rows,
     validate_sample_alignment,
 )
 from rskit.utils.logger import get_logger
@@ -70,11 +71,8 @@ def _validate_gene_by_sample_table(
     metadata: pd.DataFrame,
     table_name: str,
 ) -> Tuple[int, int]:
-    metadata_samples = {str(sample_id) for sample_id in metadata.index}
-    table_rows = {str(sample_id) for sample_id in table.index}
-
     # samples as rows wins even when they also appear as columns (square matrices)
-    if metadata_samples.issubset(table_rows):
+    if samples_in_rows(table, metadata):
         logger.warning(
             f"{table_name} appears to be samples x genes, but rskit expects "
             "genes x samples for user input; please transpose the file."

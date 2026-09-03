@@ -46,6 +46,18 @@ def load_coldata(path: str, required_columns: Sequence[str] = ()) -> pd.DataFram
     return metadata.set_index("sample")
 
 
+def samples_in_rows(table: pd.DataFrame, metadata: pd.DataFrame) -> bool:
+    """Return True when the table's rows match the metadata sample IDs.
+
+    Decides table orientation (samples x features vs features x samples).
+    Samples-as-rows wins even when sample IDs also appear as columns
+    (square matrices must not silently flip to the transposed reading).
+    """
+    sample_ids = {str(sample_id) for sample_id in metadata.index}
+    row_ids = {str(row_id) for row_id in table.index}
+    return sample_ids.issubset(row_ids)
+
+
 def validate_sample_alignment(
     table: pd.DataFrame,
     metadata: pd.DataFrame,

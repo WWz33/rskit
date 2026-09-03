@@ -298,6 +298,7 @@ class QuantExpressionTests(unittest.TestCase):
             design="~condition",
             alpha=0.05,
             lfc_threshold=2.0,
+            prefilter_min_count=10,
             threads=None,
             contrast=None,
         )
@@ -323,6 +324,7 @@ class QuantExpressionTests(unittest.TestCase):
                  "upregulated_genes": 0,
                  "downregulated_genes": 0,
                  "alpha": 0.05,
+                 "lfc_threshold": 2.0,
              }):
             run_deseq2_cli(args)
 
@@ -354,6 +356,7 @@ class QuantExpressionTests(unittest.TestCase):
             design="~condition",
             alpha=0.05,
             lfc_threshold=2.0,
+            prefilter_min_count=10,
             threads=None,
             contrast=None,
         )
@@ -383,6 +386,7 @@ class QuantExpressionTests(unittest.TestCase):
                  "upregulated_genes": 0,
                  "downregulated_genes": 0,
                  "alpha": 0.05,
+                 "lfc_threshold": 2.0,
              }):
             run_deseq2_cli(args)
 
@@ -429,6 +433,7 @@ class QuantExpressionTests(unittest.TestCase):
             design="~condition",
             alpha=0.05,
             lfc_threshold=2.0,
+            prefilter_min_count=10,
             threads=None,
             contrast="condition,C,A",
         )
@@ -459,6 +464,7 @@ class QuantExpressionTests(unittest.TestCase):
             design="~condition",
             alpha=0.05,
             lfc_threshold=2.0,
+            prefilter_min_count=10,
             threads=None,
             contrast="condition,B,A",
         )
@@ -483,6 +489,7 @@ class QuantExpressionTests(unittest.TestCase):
                  "upregulated_genes": 0,
                  "downregulated_genes": 0,
                  "alpha": 0.05,
+                 "lfc_threshold": 2.0,
              }):
             run_deseq2_cli(args)
 
@@ -538,6 +545,7 @@ class QuantExpressionTests(unittest.TestCase):
                 "upregulated_genes": 0,
                 "downregulated_genes": 0,
                 "alpha": 0.05,
+                "lfc_threshold": 2.0,
             }
 
             run_deseq2_cli(args)
@@ -566,6 +574,7 @@ class QuantExpressionTests(unittest.TestCase):
             design="~condition",
             alpha=0.05,
             lfc_threshold=2.0,
+            prefilter_min_count=10,
             threads=None,
             contrast="condition,B,A",
         )
@@ -590,6 +599,7 @@ class QuantExpressionTests(unittest.TestCase):
                  "upregulated_genes": 0,
                  "downregulated_genes": 0,
                  "alpha": 0.05,
+                 "lfc_threshold": 2.0,
              }):
             run_deseq2_cli(args)
 

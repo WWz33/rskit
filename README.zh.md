@@ -53,7 +53,6 @@ pip install -e .
 
 ```bash
 rskit template coldata -o coldata.csv
-rskit template contrast -o contrast.tsv
 ```
 
 ### 我想在长时间运行前发现输入问题

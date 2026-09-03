@@ -23,13 +23,6 @@ TEMPLATE_ROWS: Dict[str, List[Dict[str, str]]] = {
             "r2": "reads/sample2_R2.fq.gz",
         },
     ],
-    "contrast": [
-        {
-            "factor": "condition",
-            "level1": "treatment",
-            "level2": "control",
-        },
-    ],
 }
 
 
