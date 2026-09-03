@@ -21,7 +21,8 @@ class RNAseqPipeline:
 
     def run(self, samples: Dict[str, Dict], genome_fasta: str, gtf_file: str,
             transcript_fasta: str, index_dir: str, output_dir: str,
-            quant_output_dir: str, force_index: bool = False) -> Dict:
+            quant_output_dir: str, force_index: bool = False,
+            skip_existing: bool = False) -> Dict:
         results = {}
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
@@ -40,6 +41,13 @@ class RNAseqPipeline:
             self.logger.info("Index found, skipping build")
 
         for sample_name, sample_data in samples.items():
+            # skip before aligning, mirroring the parallel path
+            quant_file = quant_path / sample_name / "quant.sf"
+            if skip_existing and quant_file.exists() and quant_file.stat().st_size > 0:
+                self.logger.info(f"Quantification output already exists for {sample_name}, skipping")
+                results[sample_name] = {"quantification": {"quant": str(quant_file)}}
+                continue
+
             self.logger.info(f"Processing sample: {sample_name}")
             sample_output = output_path / sample_name
             sample_output.mkdir(parents=True, exist_ok=True)
@@ -50,7 +58,8 @@ class RNAseqPipeline:
 
             salmon_output = quant_path / sample_name
             quant_results = self.quantifier.quantify(transcript_fasta, align_results["transcriptome_bam"],
-                                                     str(salmon_output), sample_name=sample_name)
+                                                     str(salmon_output), sample_name=sample_name,
+                                                     skip_if_exists=skip_existing)
 
             results[sample_name] = {"alignment": align_results, "quantification": quant_results}
             self.logger.info(f"Completed sample: {sample_name}")

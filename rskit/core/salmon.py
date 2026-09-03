@@ -55,7 +55,11 @@ class SalmonQuantifier:
         # only trust a non-empty quant.sf (a crashed run can leave a truncated file)
         if skip_if_exists and quant_file.exists() and quant_file.stat().st_size > 0:
             self.logger.info(f"Quantification output already exists at {output_dir}, skipping")
-            return {"quant": str(quant_file), "lib_format_counts": str(output_path / "lib_format_counts.json")}
+            existing = {"quant": str(quant_file)}
+            lib_counts = output_path / "lib_format_counts.json"
+            if lib_counts.exists():
+                existing["lib_format_counts"] = str(lib_counts)
+            return existing
         
         output_path.mkdir(parents=True, exist_ok=True)
         

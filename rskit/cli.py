@@ -12,6 +12,7 @@ from rskit.input_validation import validate_input_files
 from rskit.templates import write_template
 from rskit.config import StarConfig, SalmonConfig, PipelineConfig, DESeq2Config
 from rskit.core.pipeline import RNAseqPipeline
+from rskit.core.base import Tool
 from rskit.core.deseq2 import run_deseq2_cli
 from rskit.core.wgcna import run_wgcna_cli
 from rskit.utils.logger import get_logger
@@ -109,13 +110,13 @@ def trim_reads(
     ]
     cmd = merge_extra_args(cmd, fastp_args, FASTP_PROTECTED_OPTIONS)
     logger.info(f"[{sample}] Trimming...")
-    subprocess.run(cmd, check=True, capture_output=True)
+    Tool("fastp")._run_command(cmd)
     logger.info(f"[{sample}] Trimming completed")
     return str(prefix) + '_1.fq', str(prefix) + '_2.fq'
 
 
 def parse_samples_from_coldata(coldata: str):
-    """Parse samples from coldata file"""
+    """Parse samples from coldata file, validating sample names and read files"""
     samples_df = load_coldata(coldata, required_columns=["r1", "r2"])
     samples = []
     for sample_name, row in samples_df.iterrows():
@@ -124,7 +125,14 @@ def parse_samples_from_coldata(coldata: str):
             raise ValueError(
                 f"Invalid sample name {name!r}: use letters, digits, '.', '_' or '-' only"
             )
-        samples.append((name, resolve_path_from_table(row['r1'], coldata), resolve_path_from_table(row['r2'], coldata)))
+        reads = (
+            resolve_path_from_table(row['r1'], coldata),
+            resolve_path_from_table(row['r2'], coldata),
+        )
+        missing = [str(read_path) for read_path in reads if not read_path.exists()]
+        if missing:
+            raise FileNotFoundError("Read files do not exist: " + ", ".join(missing))
+        samples.append((name, reads[0], reads[1]))
     return samples
 
 
@@ -205,7 +213,8 @@ def run_quantification(samples: Dict[str, Dict], genome_fasta: str, gtf_file: st
             index_dir=str(index_dir),
             output_dir=str(workdirs['bam']),
             quant_output_dir=str(workdirs['quant']),
-            force_index=False
+            force_index=False,
+            skip_existing=skip_existing
         )
 
 
@@ -272,19 +281,22 @@ def main_quant(args):
     
     # Setup work directory
     workdirs = setup_workdir(args.output_dir)
-    
-    # Determine and check index directory
-    index_dir = Path(args.index_dir).resolve() if args.index_dir else workdirs['index']
-    build_index_if_needed(index_dir, genome_fasta, gtf_file, args.threads, args.force_index, star_args)
-    
-    # Parse samples
+
+    # Parse samples (and validate reads) before any expensive index build
     if args.coldata:
         samples_list = parse_samples_from_coldata(args.coldata)
     else:
         if not all([args.sample, r1, r2]):
             raise ValueError("Must provide --sample, --r1, --r2 or use --coldata")
+        for read_path in (r1, r2):
+            if not read_path.exists():
+                raise FileNotFoundError(f"Read file not found: {read_path}")
         samples_list = [(args.sample, r1, r2)]
-    
+
+    # Determine and check index directory
+    index_dir = Path(args.index_dir).resolve() if args.index_dir else workdirs['index']
+    build_index_if_needed(index_dir, genome_fasta, gtf_file, args.threads, args.force_index, star_args)
+
     # Calculate sample scheduling plan
     num_samples = len(samples_list)
     sample_plan = calculate_sample_plan(args.threads, args.jobs, num_samples)
@@ -397,13 +409,13 @@ def main_all(args):
     
     # Setup work directory
     workdirs = setup_workdir(args.output_dir)
-    
+
+    # Parse samples (and validate reads) before any expensive index build
+    samples_list = parse_samples_from_coldata(coldata_file)
+
     # Determine and check index directory
     index_dir = Path(args.index_dir).resolve() if args.index_dir else workdirs['index']
     build_index_if_needed(index_dir, genome_fasta, gtf_file, args.threads, args.force_index, star_args)
-    
-    # Parse samples from coldata
-    samples_list = parse_samples_from_coldata(coldata_file)
     
     # Calculate sample scheduling plan
     num_samples = len(samples_list)

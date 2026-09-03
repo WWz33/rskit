@@ -1,6 +1,7 @@
 import argparse
 import csv
 import json
+import subprocess
 import sys
 import tempfile
 import types
@@ -163,6 +164,8 @@ class QuantExpressionTests(unittest.TestCase):
 
     def test_parse_samples_from_coldata_accepts_tsv_contract(self) -> None:
         coldata_path = self.root / "coldata.tsv"
+        for name in ("sample1_R1.fq.gz", "sample1_R2.fq.gz"):
+            (self.root / name).write_text("stub", encoding="utf-8")
         coldata_path.write_text(
             "sample\tcondition\tr1\tr2\n"
             "sample1\tA\tsample1_R1.fq.gz\tsample1_R2.fq.gz\n",
@@ -601,6 +604,8 @@ class QuantExpressionTests(unittest.TestCase):
 
     def test_main_all_passes_quant_gene_counts_into_deseq(self) -> None:
         coldata_path = self.root / "coldata.csv"
+        for name in ("sample1_R1.fq.gz", "sample1_R2.fq.gz"):
+            (self.root / name).write_text("stub", encoding="utf-8")
         with coldata_path.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(handle, fieldnames=["sample", "id", "condition", "r1", "r2"])
             writer.writeheader()
@@ -651,6 +656,8 @@ class QuantExpressionTests(unittest.TestCase):
 
     def test_main_quant_exports_current_samples_in_coldata_order(self) -> None:
         coldata_path = self.root / "coldata.csv"
+        for name in ("sample1_R1.fq.gz", "sample1_R2.fq.gz", "sample2_R1.fq.gz", "sample2_R2.fq.gz"):
+            (self.root / name).write_text("stub", encoding="utf-8")
         with coldata_path.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(handle, fieldnames=["sample", "r1", "r2"])
             writer.writeheader()
@@ -791,6 +798,60 @@ class QuantExpressionTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "Invalid sample name"):
                 cli.parse_samples_from_coldata(str(coldata))
+
+    def test_parse_samples_from_coldata_rejects_missing_reads(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            coldata = Path(tempdir) / "coldata.csv"
+            coldata.write_text(
+                "sample,r1,r2\nsample1,missing_R1.fq,missing_R2.fq\n", encoding="utf-8"
+            )
+
+            with self.assertRaisesRegex(FileNotFoundError, "missing_R1.fq"):
+                cli.parse_samples_from_coldata(str(coldata))
+
+    def test_pipeline_run_skips_existing_quant_before_align(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            quant_dir = Path(tempdir) / "03_quant"
+            (quant_dir / "sample1").mkdir(parents=True)
+            (quant_dir / "sample1" / "quant.sf").write_text("stub", encoding="utf-8")
+
+            pipeline = RNAseqPipeline(PipelineConfig(output_dir=tempdir))
+            pipeline.aligner.align = mock.Mock()
+            pipeline.quantifier.quantify = mock.Mock()
+
+            pipeline.indexer.build_index = mock.Mock(return_value=True)
+
+            pipeline.run(
+                samples={"sample1": {"fq1": "r1", "fq2": "r2"}},
+                genome_fasta="genome.fa",
+                gtf_file="genes.gtf",
+                transcript_fasta="transcripts.fa",
+                index_dir=str(Path(tempdir) / "index"),
+                output_dir=tempdir,
+                quant_output_dir=str(quant_dir),
+                skip_existing=True,
+            )
+
+        pipeline.aligner.align.assert_not_called()
+
+    def test_trim_reads_reports_fastp_failure_with_stderr(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            workdirs = {
+                "clean_data": root,
+                "clean_data_json": root,
+                "clean_data_html": root,
+            }
+            with mock.patch("rskit.core.base.Tool._run_command", side_effect=RuntimeError(
+                "fastp failed with exit code 1: fastp\nfastp: bad input"
+            )):
+                with self.assertRaisesRegex(RuntimeError, "bad input"):
+                    cli.trim_reads(
+                        read1=root / "r1.fq",
+                        read2=root / "r2.fq",
+                        sample="sample1",
+                        workdirs=workdirs,
+                    )
 
 
 if __name__ == "__main__":
