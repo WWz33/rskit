@@ -658,7 +658,7 @@ class QuantExpressionTests(unittest.TestCase):
              mock.patch("rskit.cli.prepare_samples", return_value={"sample1": {"fq1": "a", "fq2": "b"}}), \
              mock.patch("rskit.cli.run_quantification", return_value={"sample1": {}}), \
              mock.patch("rskit.cli.merge_salmon_quant_tables", return_value=exported), \
-             mock.patch("rskit.cli.os.cpu_count", return_value=2), \
+             mock.patch("rskit.cli.os.sched_getaffinity", return_value={0, 1}), \
              mock.patch("rskit.cli.run_deseq2_cli") as run_deseq2:
             cli.main_all(args)
 

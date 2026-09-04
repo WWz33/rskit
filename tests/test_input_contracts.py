@@ -8,10 +8,12 @@ import rskit.input_contracts as input_contracts
 from rskit.input_contracts import (
     detect_separator,
     design_columns,
+    ensure_genes_by_samples,
     load_coldata,
     read_table,
     resolve_path_from_table,
     validate_sample_alignment,
+    validate_sample_name,
 )
 
 
@@ -102,6 +104,39 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(design_columns("~condition"), ["condition"])
         self.assertEqual(design_columns("~batch + condition"), ["batch", "condition"])
         self.assertEqual(design_columns("~ 1"), [])
+
+    def test_design_columns_expands_crossed_terms(self) -> None:
+        # R semantics: ~batch*condition == ~batch + condition + batch:condition
+        self.assertEqual(design_columns("~batch*condition"), ["batch", "condition"])
+
+    def test_ensure_genes_by_samples_transposes_and_reorders(self) -> None:
+        table = pd.DataFrame(
+            {"s2": [12, 24], "s1": [10, 20]},
+            index=["geneA", "geneB"],
+        )
+        metadata = pd.DataFrame({"condition": ["A", "B"]}, index=["s1", "s2"])
+
+        oriented = ensure_genes_by_samples(table, metadata, table_name="counts")
+
+        self.assertEqual(list(oriented.index), ["s1", "s2"])
+        self.assertEqual(list(oriented.columns), ["geneA", "geneB"])
+        self.assertEqual(oriented.loc["s2", "geneB"], 24)
+
+    def test_ensure_genes_by_samples_rejects_samples_in_rows(self) -> None:
+        table = pd.DataFrame(
+            {"geneA": [1, 2], "geneB": [3, 4]},
+            index=["s1", "s2"],
+        )
+        metadata = pd.DataFrame({"condition": ["A", "B"]}, index=["s1", "s2"])
+
+        with self.assertRaisesRegex(ValueError, "transpose"):
+            ensure_genes_by_samples(table, metadata, table_name="counts")
+
+    def test_validate_sample_name_rejects_path_separators(self) -> None:
+        self.assertEqual(validate_sample_name("sample-1_A.rep2"), "sample-1_A.rep2")
+        for bad in ("a/b", "..", "a b", ""):
+            with self.assertRaisesRegex(ValueError, "Invalid sample name"):
+                validate_sample_name(bad)
 
 class InputContractGuards(unittest.TestCase):
     def test_resolve_path_rejects_empty_values(self) -> None:

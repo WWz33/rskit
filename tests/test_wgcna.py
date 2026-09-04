@@ -82,7 +82,7 @@ class WGCNAAnalyzerTests(unittest.TestCase):
         self.assertEqual(list(passed_sample_info.columns), ["condition"])
         self.assertEqual(list(passed_gene_info.index), ["geneA", "geneB"])
 
-    def test_load_data_warns_when_expression_looks_samples_by_genes(self) -> None:
+    def test_load_data_rejects_expression_in_samples_by_genes_orientation(self) -> None:
         expression = self.root / "expression.csv"
         pd.DataFrame(
             {"geneA": [1.0, 2.0], "geneB": [3.0, 4.0], "geneC": [5.0, 6.0]},
@@ -93,15 +93,10 @@ class WGCNAAnalyzerTests(unittest.TestCase):
         fake_wgcna = mock.Mock(return_value="wgcna-object")
         fake_module = types.SimpleNamespace(WGCNA=fake_wgcna)
 
-        with mock.patch.dict(sys.modules, {"PyWGCNA": fake_module}), \
-             self.assertLogs("rskit.core.wgcna", level="WARNING") as logs:
+        with mock.patch.dict(sys.modules, {"PyWGCNA": fake_module}):
             analyzer = WGCNAAnalyzer(output_dir=str(self.root / "out"))
-            analyzer.load_data(str(expression), coldata=str(coldata))
-
-        self.assertIn("genes x samples", "\n".join(logs.output))
-        passed_gene_expr = fake_wgcna.call_args.kwargs["geneExp"]
-        self.assertEqual(list(passed_gene_expr.index), ["sample1", "sample2"])
-        self.assertEqual(list(passed_gene_expr.columns), ["geneA", "geneB", "geneC"])
+            with self.assertRaisesRegex(ValueError, "transpose"):
+                analyzer.load_data(str(expression), coldata=str(coldata))
 
     def test_load_data_rejects_missing_metadata_samples(self) -> None:
         expression = self.root / "expression.csv"
@@ -138,9 +133,10 @@ class WGCNAAnalyzerTests(unittest.TestCase):
             )
         self.assertIsNone(fake_wgcna.call_args.kwargs["powers"])
 
-    def test_load_data_treats_square_matrix_with_samples_as_rows(self) -> None:
+    def test_load_data_rejects_square_matrix_with_samples_as_rows(self) -> None:
         expression = self.root / "expression.csv"
-        # square 2x2: sample IDs appear as both rows and columns
+        # square 2x2: sample IDs appear as both rows and columns; samples-as-rows
+        # wins the orientation check, so this must be rejected, not silently kept
         pd.DataFrame(
             {"sample1": [1.0, 2.0], "sample2": [3.0, 4.0]},
             index=pd.Index(["sample1", "sample2"], name="sample"),
@@ -152,11 +148,8 @@ class WGCNAAnalyzerTests(unittest.TestCase):
 
         with mock.patch.dict(sys.modules, {"PyWGCNA": fake_module}):
             analyzer = WGCNAAnalyzer(output_dir=str(self.root / "out"))
-            analyzer.load_data(str(expression), coldata=str(coldata))
-
-        passed_gene_expr = fake_wgcna.call_args.kwargs["geneExp"]
-        self.assertEqual(list(passed_gene_expr.index), ["sample1", "sample2"])
-        self.assertEqual(list(passed_gene_expr.columns), ["sample1", "sample2"])
+            with self.assertRaisesRegex(ValueError, "transpose"):
+                analyzer.load_data(str(expression), coldata=str(coldata))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,5 @@
-import sys
 from pathlib import Path
-from rskit.input_contracts import load_coldata, read_table, samples_in_rows, validate_sample_alignment
+from rskit.input_contracts import ensure_genes_by_samples, load_coldata, read_table
 from rskit.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -39,33 +38,21 @@ class WGCNAAnalyzer:
         if coldata:
             logger.info(f"Loading sample metadata from {coldata}")
             sample_info = load_coldata(coldata)
-            appears_samples_by_genes = self._warn_if_expression_looks_samples_by_genes(gene_expr, sample_info)
-        else:
-            appears_samples_by_genes = False
-
-        if appears_samples_by_genes:
-            if sample_info is not None:
-                validate_sample_alignment(gene_expr, sample_info, table_name="expression matrix")
-                gene_expr = gene_expr.loc[sample_info.index]
-            gene_expr.index.name = "sample"
+            gene_expr = ensure_genes_by_samples(gene_expr, sample_info, table_name="expression matrix")
         else:
             gene_expr = gene_expr.T
-            gene_expr.index.name = "sample"
-            if sample_info is not None:
-                validate_sample_alignment(gene_expr, sample_info, table_name="expression matrix")
-                gene_expr = gene_expr.loc[sample_info.index]
-                
+        gene_expr.index.name = "sample"
+
         # Load gene metadata if provided
         gene_info = None
         if gene_info_file:
             logger.info(f"Loading gene metadata from {gene_info_file}")
             gene_info = read_table(gene_info_file, sep=sep, index_col=0)
-                
+
         try:
             import PyWGCNA
         except ImportError:
-            logger.error("PyWGCNA is not installed. Please install it with: pip install PyWGCNA")
-            sys.exit(1)
+            raise ImportError("PyWGCNA is not installed. Please install it with: pip install PyWGCNA")
             
         # Create PyWGCNA object
         self.wgcna_obj = PyWGCNA.WGCNA(
@@ -90,23 +77,10 @@ class WGCNAAnalyzer:
         logger.info("Data loaded successfully")
         return self.wgcna_obj
 
-    @staticmethod
-    def _warn_if_expression_looks_samples_by_genes(gene_expr, sample_info):
-        """Warn when a user expression matrix does not follow genes x samples."""
-        if samples_in_rows(gene_expr, sample_info):
-            logger.warning(
-                "WGCNA expression matrix appears to be samples x genes, but rskit expects "
-                "genes x samples for user input; please transpose the file."
-            )
-            return True
-
-        return False
-        
     def run_analysis(self, show=False):
         """Run the complete WGCNA analysis pipeline"""
         if self.wgcna_obj is None:
-            logger.error("No data loaded. Please load data first.")
-            sys.exit(1)
+            raise RuntimeError("No data loaded. Please load data first.")
             
         logger.info("Starting WGCNA analysis...")
         

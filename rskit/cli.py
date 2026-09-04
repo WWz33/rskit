@@ -1,13 +1,11 @@
 import argparse
 import sys
 import os
-import re
-import subprocess
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Tuple
 from rskit.cli_args import merge_extra_args
-from rskit.input_contracts import load_coldata, resolve_path_from_table
+from rskit.input_contracts import load_coldata, resolve_path_from_table, validate_sample_name
 from rskit.input_validation import validate_input_files
 from rskit.templates import write_template
 from rskit.config import StarConfig, SalmonConfig, PipelineConfig, DESeq2Config
@@ -122,11 +120,7 @@ def parse_samples_from_coldata(coldata: str):
     samples_df = load_coldata(coldata, required_columns=["r1", "r2"])
     samples = []
     for sample_name, row in samples_df.iterrows():
-        name = str(sample_name)
-        if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
-            raise ValueError(
-                f"Invalid sample name {name!r}: use letters, digits, '.', '_' or '-' only"
-            )
+        name = validate_sample_name(sample_name)
         reads = (
             resolve_path_from_table(row['r1'], coldata),
             resolve_path_from_table(row['r2'], coldata),
@@ -259,37 +253,46 @@ def log_sample_plan(plan, num_samples: int) -> None:
 
 
 def cap_threads_to_available_cpus(threads: Optional[int]) -> Optional[int]:
-    """Cap a thread request to the CPUs visible to Python."""
+    """Cap a thread request to the CPUs available to this process.
+
+    sched_getaffinity reflects SLURM/cgroup allocations; os.cpu_count() would
+    report the whole node and defeat the cap on shared clusters.
+    """
     if threads is None:
         return None
-    cpu_count = os.cpu_count()
-    if cpu_count is None:
+    try:
+        available = len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        available = os.cpu_count()
+    if not available:
         return threads
-    return min(threads, cpu_count)
+    return min(threads, available)
 
 
-def main_quant(args):
-    """Run quantification pipeline"""
+def run_quant_phase(args, workdirs: Dict[str, Path]) -> Tuple[List, Dict[str, str]]:
+    """Run index -> trim -> align -> quantify -> export -> QC summary.
+
+    Shared by ``quant`` and ``all`` so the two entry points cannot drift apart.
+    Returns (samples_list, expression_outputs).
+    """
     star_args = getattr(args, "star_args", "")
     salmon_args = getattr(args, "salmon_args", "")
     fastp_args = getattr(args, "fastp_args", "")
 
     # Convert paths to absolute
-    r1 = Path(args.r1).resolve() if args.r1 else None
-    r2 = Path(args.r2).resolve() if args.r2 else None
     genome_fasta = str(Path(args.genome_fasta).resolve())
     gtf_file = str(Path(args.gtf_file).resolve())
     transcript_fasta = str(Path(args.transcript_fasta).resolve())
-    
-    # Setup work directory
-    workdirs = setup_workdir(args.output_dir)
 
     # Parse samples (and validate reads) before any expensive index build
     if args.coldata:
         samples_list = parse_samples_from_coldata(args.coldata)
     else:
+        r1 = Path(args.r1).resolve() if args.r1 else None
+        r2 = Path(args.r2).resolve() if args.r2 else None
         if not all([args.sample, r1, r2]):
             raise ValueError("Must provide --sample, --r1, --r2 or use --coldata")
+        validate_sample_name(args.sample)
         for read_path in (r1, r2):
             if not read_path.exists():
                 raise FileNotFoundError(f"Read file not found: {read_path}")
@@ -303,7 +306,7 @@ def main_quant(args):
     num_samples = len(samples_list)
     sample_plan = calculate_sample_plan(args.threads, args.jobs, num_samples)
     log_sample_plan(sample_plan, num_samples)
-    
+
     # Prepare and run samples
     samples = prepare_samples(
         samples_list,
@@ -325,8 +328,16 @@ def main_quant(args):
         merge_sf=args.merge_sf,
     )
 
-    logger.info(f"Pipeline completed. Processed {len(results)} samples.")
+    logger.info(f"Quantification completed. Processed {len(results)} samples.")
     write_qc_summary(workdirs)
+    return samples_list, expression_outputs
+
+
+def main_quant(args):
+    """Run quantification pipeline"""
+    workdirs = setup_workdir(args.output_dir)
+    _, expression_outputs = run_quant_phase(args, workdirs)
+    logger.info(f"Pipeline completed. Results saved to: {args.output_dir}")
     if expression_outputs:
         logger.info(f"Gene-level outputs: {expression_outputs}")
 
@@ -336,13 +347,11 @@ def main_deseq2(args):
     logger.info("="*60)
     logger.info("DESeq2 Differential Expression Analysis")
     logger.info("="*60)
-    
-    # Validate input arguments
+
+    # argparse enforces a mutually exclusive required input; keep a defensive
+    # check for programmatic callers
     if not args.salmon_dir and not args.gene_counts:
         raise ValueError("Either --salmon-dir or --gene-counts must be provided")
-
-    if args.salmon_dir and args.gene_counts:
-        logger.warning("Both --salmon-dir and --gene-counts provided. Using --salmon-dir with pytximport")
 
     # Use default 04_deseq2 directory if output_dir not specified
     output_dir = Path(args.output_dir) if args.output_dir else Path(args.work_dir) / "04_deseq2"
@@ -397,61 +406,20 @@ def main_template(args):
 
 def main_all(args):
     """Run complete pipeline: quant -> deseq2"""
-    star_args = getattr(args, "star_args", "")
-    salmon_args = getattr(args, "salmon_args", "")
-    fastp_args = getattr(args, "fastp_args", "")
-
     logger.info("="*60)
     logger.info("Complete Pipeline: Quantification + DESeq2")
     logger.info("="*60)
-    
-    # Convert paths to absolute
-    genome_fasta = str(Path(args.genome_fasta).resolve())
-    gtf_file = str(Path(args.gtf_file).resolve())
-    transcript_fasta = str(Path(args.transcript_fasta).resolve())
-    coldata_file = str(Path(args.coldata).resolve())
-    
+
     # Setup work directory
     workdirs = setup_workdir(args.output_dir)
+    coldata_file = str(Path(args.coldata).resolve())
 
-    # Parse samples (and validate reads) before any expensive index build
-    samples_list = parse_samples_from_coldata(coldata_file)
-
-    # Determine and check index directory
-    index_dir = Path(args.index_dir).resolve() if args.index_dir else workdirs['index']
-    build_index_if_needed(index_dir, genome_fasta, gtf_file, args.threads, args.force_index, star_args)
-    
-    # Calculate sample scheduling plan
-    num_samples = len(samples_list)
-    sample_plan = calculate_sample_plan(args.threads, args.jobs, num_samples)
-    log_sample_plan(sample_plan, num_samples)
-    
     # Step 1: Run quantification
     logger.info("="*60)
     logger.info("Step 1: Quantification Pipeline")
     logger.info("="*60)
-    
-    samples = prepare_samples(
-        samples_list,
-        workdirs,
-        args.trim,
-        sample_plan.threads_per_sample,
-        jobs=sample_plan.active_jobs,
-        fastp_args=fastp_args,
-    )
-    results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
-                                 index_dir, workdirs, sample_plan.threads_per_sample,
-                                 sample_plan.active_jobs, args.skip_existing,
-                                 star_args=star_args, salmon_args=salmon_args)
-    logger.info(f"Quantification completed. Processed {len(results)} samples.")
-    write_qc_summary(workdirs)
-    expression_outputs = export_quant_expression_tables(
-        quant_dir=workdirs['quant'],
-        gtf_file=gtf_file,
-        tx2gene=args.tx2gene,
-        sample_names=[sample_name for sample_name, _, _ in samples_list],
-        merge_sf=args.merge_sf,
-    )
+
+    _, expression_outputs = run_quant_phase(args, workdirs)
 
     # Step 2: Run DESeq2
     logger.info("="*60)

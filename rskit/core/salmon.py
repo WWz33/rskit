@@ -8,7 +8,7 @@ import pandas as pd
 from rskit.core.base import Tool
 from rskit.cli_args import merge_extra_args
 from rskit.config import SalmonConfig
-from rskit.utils.gtf import open as gtf_open
+from rskit.utils.gtf import iter_gtf
 from rskit.utils.logger import get_logger
 from rskit.utils.validators import validate_file
 
@@ -95,7 +95,7 @@ class SalmonExpressionExporter:
 
         opener = gzip.open if str(gtf_file).endswith(".gz") else open
         with opener(gtf_file, "rt", encoding="utf-8", errors="ignore") as reader:
-            for rec in gtf_open(reader, "ensembl"):
+            for rec in iter_gtf(reader, "ensembl"):
                 num_records += 1
                 if rec.feature != "transcript":
                     continue
@@ -143,7 +143,9 @@ class SalmonExpressionExporter:
             self.logger.info(f"Loaded tx2gene map from {tx2gene_path}")
 
             if "transcript_id" not in tx2gene_map.columns or "gene_id" not in tx2gene_map.columns:
-                # headerless files are common; pandas treats their first row as column names
+                # headerless files are common; pandas treats their first row as column names.
+                # NOTE: the heuristic below assumes Ensembl-style IDs (ENST/ENSG prefixes);
+                # headerless files from other annotations may need manual column names.
                 if tx2gene_map.columns.astype(str).str.match(r"^\w*(ENST|ENSG)\d").all():
                     tx2gene_map = pd.read_csv(tx2gene_path, sep=separator, header=None)
                 if len(tx2gene_map.columns) < 2:

@@ -1,7 +1,9 @@
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
-from rskit.utils.parallel import calculate_sample_plan, run_samples_parallel
+from rskit.utils.parallel import calculate_sample_plan, process_single_sample, run_samples_parallel
 
 
 class QuantSchedulingTests(unittest.TestCase):
@@ -108,6 +110,42 @@ class QuantSchedulingTests(unittest.TestCase):
             ),
             {},
         )
+
+    def _sample_args(self, root: Path, skip_existing: bool = True):
+        workdirs = {"bam": root / "bam", "quant": root / "quant"}
+        (workdirs["bam"] / "sample1").mkdir(parents=True)
+        (workdirs["quant"] / "sample1").mkdir(parents=True)
+        return (
+            "sample1",
+            {"fq1": "missing_r1.fq", "fq2": "missing_r2.fq"},
+            "index",
+            "transcripts.fa",
+            workdirs,
+            4,
+            skip_existing,
+            "",
+            "",
+        ), workdirs
+
+    def test_skip_existing_accepts_non_empty_quant(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            args, workdirs = self._sample_args(Path(tempdir))
+            (workdirs["quant"] / "sample1" / "quant.sf").write_text("stub", encoding="utf-8")
+
+            name, result = process_single_sample(args)
+
+        self.assertEqual(name, "sample1")
+        self.assertIn("quantification", result)
+
+    def test_skip_existing_reruns_truncated_quant(self) -> None:
+        # a crashed run leaves an empty quant.sf; it must not count as done
+        with tempfile.TemporaryDirectory() as tempdir:
+            args, workdirs = self._sample_args(Path(tempdir))
+            (workdirs["quant"] / "sample1" / "quant.sf").write_text("", encoding="utf-8")
+
+            # falls through to alignment, which fails on the missing reads
+            with self.assertRaises(FileNotFoundError):
+                process_single_sample(args)
 
 
 if __name__ == "__main__":

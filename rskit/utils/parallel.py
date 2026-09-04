@@ -62,9 +62,9 @@ def process_single_sample(args):
     sample_quant_dir = Path(workdirs['quant']) / sample_name
     sample_quant_dir.mkdir(parents=True, exist_ok=True)
     
-    # Check if output exists and skip if requested
+    # same trust rule as the sequential path: a crashed run can leave a truncated quant.sf
     quant_file = sample_quant_dir / "quant.sf"
-    if skip_existing and quant_file.exists():
+    if skip_existing and quant_file.exists() and quant_file.stat().st_size > 0:
         logger.info(f"[{sample_name}] Output exists, skipping")
         return sample_name, {"quantification": {"quant": str(quant_file)}}
     

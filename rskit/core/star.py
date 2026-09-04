@@ -78,10 +78,11 @@ class StarAligner:
         output_path = Path(output_prefix).parent
         output_path.mkdir(parents=True, exist_ok=True)
         
-        # 检测输入文件格式；两段 read 压缩格式必须一致，否则 STAR 会对纯文本跑 zcat
+        # 检测输入文件格式；两段 read 压缩格式必须一致，否则 STAR 会对纯文本跑解压命令
         if fq1.endswith(".gz") != fq2.endswith(".gz"):
             raise ValueError(f"Mates must both be gzipped or both plain: {fq1}, {fq2}")
-        read_cmd = 'zcat' if fq1.endswith('.gz') else 'cat'
+        # gzip -dc 比 zcat 更可移植（部分系统只有 gzip 没有 zcat）
+        read_cmd = 'gzip -dc' if fq1.endswith('.gz') else 'cat'
         
         cmd = ["STAR", "--runThreadN", str(self.config.threads), "--genomeDir", index_dir,
                "--readFilesIn", fq1, fq2, "--readFilesCommand", read_cmd,

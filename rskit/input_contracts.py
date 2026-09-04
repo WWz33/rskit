@@ -2,6 +2,21 @@ from pathlib import Path
 from typing import List, Optional, Sequence
 
 import pandas as pd
+import re
+
+
+SAMPLE_NAME_PATTERN = re.compile(r"[A-Za-z0-9._-]+")
+
+
+def validate_sample_name(name) -> str:
+    """Require sample names that are safe to use as output path components."""
+    name = str(name)
+    # '.' and '..' pass the character whitelist but escape the output layout
+    if not SAMPLE_NAME_PATTERN.fullmatch(name) or not name.strip("."):
+        raise ValueError(
+            f"Invalid sample name {name!r}: use letters, digits, '.', '_' or '-' only"
+        )
+    return name
 
 
 def detect_separator(path: str, sep: Optional[str] = None) -> str:
@@ -58,6 +73,28 @@ def samples_in_rows(table: pd.DataFrame, metadata: pd.DataFrame) -> bool:
     return sample_ids.issubset(row_ids)
 
 
+def ensure_genes_by_samples(
+    table: pd.DataFrame,
+    metadata: pd.DataFrame,
+    table_name: str = "input table",
+) -> pd.DataFrame:
+    """Return a user-provided genes x samples table as samples x genes.
+
+    User-facing matrices are genes x samples. A table that already has
+    samples as rows almost certainly means the user transposed it, so fail
+    loudly instead of silently analyzing genes as if they were samples.
+    """
+    if samples_in_rows(table, metadata):
+        raise ValueError(
+            f"{table_name} appears to be samples x genes, but rskit expects "
+            "genes x samples for user input; please transpose the file."
+        )
+
+    oriented = table.T
+    validate_sample_alignment(oriented, metadata, table_name=table_name)
+    return oriented.loc[metadata.index]
+
+
 def validate_sample_alignment(
     table: pd.DataFrame,
     metadata: pd.DataFrame,
@@ -95,7 +132,8 @@ def design_columns(design: str) -> List[str]:
         expression = expression[1:]
 
     columns: List[str] = []
-    for term in expression.replace("+", " ").split():
+    # 'a*b' expands to a + b + a:b in R; every member column is required
+    for term in expression.replace("+", " ").replace("*", " ").split():
         # interaction terms (condition:batch) require every involved column
         for column in term.split(":"):
             column = column.strip()

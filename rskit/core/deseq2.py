@@ -7,9 +7,9 @@ from rskit.config import DESeq2Config
 from rskit.core.salmon import SalmonExpressionExporter, merge_salmon_quant_tables
 from rskit.input_contracts import (
     design_columns,
+    ensure_genes_by_samples,
     load_coldata,
     read_table,
-    samples_in_rows,
     validate_sample_alignment,
 )
 from rskit.utils.logger import get_logger
@@ -116,18 +116,10 @@ class Deseq2Analyzer:
         counts_df = read_table(counts_file, index_col=0)
 
         if metadata_df is not None:
-            if samples_in_rows(counts_df, metadata_df):
-                self.logger.warning(
-                    "Counts matrix appears to be samples x genes, but rskit expects "
-                    "genes x samples for user input; please transpose the file."
-                )
+            counts_df = ensure_genes_by_samples(counts_df, metadata_df, table_name="counts matrix")
+        else:
+            counts_df = counts_df.T
 
-        counts_df = counts_df.T
-
-        if metadata_df is not None:
-            validate_sample_alignment(counts_df, metadata_df, table_name="counts matrix")
-            counts_df = counts_df.loc[metadata_df.index]
-        
         # Ensure integer counts
         counts_df = counts_df.round().astype(int)
         

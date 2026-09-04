@@ -7,12 +7,12 @@ from rskit.utils import gtf
 
 
 class GtfTests(unittest.TestCase):
-    def test_open_alias_iterates_gtf_records(self) -> None:
+    def test_iter_gtf_iterates_gtf_records(self) -> None:
         lines = [
             'chr1\tsrc\ttranscript\t1\t100\t.\t+\t.\tgene_id "geneA"; transcript_id "tx1";\n'
         ]
 
-        records = list(gtf.open(lines, "ensembl"))
+        records = list(gtf.iter_gtf(lines, "ensembl"))
 
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].gene_id, "geneA")
@@ -29,7 +29,7 @@ class GtfTests(unittest.TestCase):
             'chr1\tsrc\ttranscript\t401\t500\t.\t+\t.\tgene_id "geneE"; transcript_id "tx5"; extra\tfield "v";\n',  # tab in attrs
         ]
 
-        records = list(gtf.open(lines, "ensembl"))
+        records = list(gtf.iter_gtf(lines, "ensembl"))
 
         self.assertEqual(
             [(r.transcript_id, r.gene_id) for r in records[:3]],

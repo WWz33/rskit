@@ -55,8 +55,12 @@ def iter_records(reader, attr_format=None, keep_line=False, append_versions=Fals
         yield (rec, line) if keep_line else rec
 
 
-def open(reader, attr_format=None, keep_line=False, append_versions=False):
+def iter_gtf(reader, attr_format=None, keep_line=False, append_versions=False):
     return iter_records(reader, attr_format, keep_line, append_versions)
+
+
+# backwards-compatible alias; the old name shadowed the builtin
+open = iter_gtf
 
 
 def parse_line(line, attr_format=None, append_versions=False):

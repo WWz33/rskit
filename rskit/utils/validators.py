@@ -27,11 +27,6 @@ def check_star_index(index_dir: str) -> bool:
         for f in required_files
     )
 
-def check_salmon_index(index_dir: str) -> bool:
-    index_path = Path(index_dir)
-    required_files = ["sa.bin", "pos.bin", "txpInfo.bin", "versionInfo.json"]
-    return all((index_path / f).exists() for f in required_files)
-
 def check_and_prepare_index(index_dir, force_index=False):
     """Check if STAR index exists and is complete.
     

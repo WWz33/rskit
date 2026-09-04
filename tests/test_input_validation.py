@@ -85,7 +85,7 @@ class InputValidationTests(unittest.TestCase):
 
         self.assertIn("expression: 2 samples x 2 genes", messages)
 
-    def test_validate_input_files_warns_on_samples_by_genes_expression(self) -> None:
+    def test_validate_input_files_rejects_samples_by_genes_expression(self) -> None:
         coldata = self.root / "coldata.csv"
         coldata.write_text(
             "sample,condition\nsample1,A\nsample2,B\n",
@@ -97,11 +97,8 @@ class InputValidationTests(unittest.TestCase):
             index=["sample1", "sample2"],
         ).to_csv(expression)
 
-        with self.assertLogs("rskit.input_validation", level="WARNING") as logs:
-            messages = validate_input_files(str(coldata), expression=str(expression))
-
-        self.assertIn("genes x samples", "\n".join(logs.output))
-        self.assertIn("expression: 2 samples x 3 genes", messages)
+        with self.assertRaisesRegex(ValueError, "transpose"):
+            validate_input_files(str(coldata), expression=str(expression))
 
     def test_doctor_cli_uses_validate_input_files(self) -> None:
         args = argparse.Namespace(
