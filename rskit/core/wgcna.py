@@ -40,6 +40,9 @@ class WGCNAAnalyzer:
             sample_info = load_coldata(coldata)
             gene_expr = ensure_genes_by_samples(gene_expr, sample_info, table_name="expression matrix")
         else:
+            logger.info(
+                "No coldata provided; assuming the matrix is genes x samples and transposing"
+            )
             gene_expr = gene_expr.T
         gene_expr.index.name = "sample"
 

@@ -176,6 +176,18 @@ class InputContractGuards(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Duplicate sample names"):
                 load_coldata(str(coldata), required_columns=["r1", "r2"])
 
+    def test_load_coldata_rejects_empty_sample_values(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            coldata = Path(tempdir) / "coldata.csv"
+            coldata.write_text("sample,condition\n,control\ns2,treat\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "empty sample"):
+                load_coldata(str(coldata))
+
+            coldata.write_text("sample,condition\n   ,control\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "empty sample"):
+                load_coldata(str(coldata))
+
     def test_design_columns_includes_interaction_members(self) -> None:
         self.assertEqual(design_columns("~batch + condition:batch"), ["batch", "condition"])
         self.assertEqual(design_columns("~condition"), ["condition"])

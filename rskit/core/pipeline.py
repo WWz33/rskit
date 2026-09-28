@@ -134,6 +134,6 @@ class RNAseqPipeline:
             
         except Exception as e:
             self.logger.error(f"DESeq2 analysis failed: {e}")
-            results['deseq2'] = {'error': str(e)}
+            raise
         
         return results

@@ -64,6 +64,19 @@ class StarArgsTests(unittest.TestCase):
                     sample_name="sample",
                 )
 
+    def test_star_index_rejects_protected_output_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            genome = root / "genome.fa"
+            gtf = root / "genes.gtf"
+            genome.write_text(">chr1\nACGT\n", encoding="utf-8")
+            gtf.write_text("", encoding="utf-8")
+
+            indexer = StarIndexer(StarConfig(extra_args="--outFileNamePrefix other/"))
+
+            with self.assertRaisesRegex(ValueError, "--outFileNamePrefix"):
+                indexer.build_index(str(genome), str(gtf), str(root / "index"), force=True)
+
     def test_build_index_clears_existing_directory_before_rebuild(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)

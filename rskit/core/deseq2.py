@@ -611,6 +611,11 @@ def run_deseq2_cli(args):
     if args.salmon_dir:
         existing_counts = SalmonExpressionExporter.find_existing_gene_counts(args.salmon_dir)
         if existing_counts is not None:
+            if args.gtf or args.tx2gene:
+                logger.warning(
+                    f"Reusing precomputed gene counts from {existing_counts}; the given "
+                    "--gtf/--tx2gene are ignored. Delete that file to force a re-export."
+                )
             logger.info(f"Using precomputed gene counts from {existing_counts}")
             counts_file = str(existing_counts)
         else:

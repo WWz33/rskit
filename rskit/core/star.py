@@ -12,6 +12,9 @@ STAR_INDEX_PROTECTED_OPTIONS = {
     "--genomeDir",
     "--genomeFastaFiles",
     "--sjdbGTFfile",
+    # not managed by rskit, but kept consistent with the alignment guard: the
+    # index build writes its Log files through this prefix
+    "--outFileNamePrefix",
 }
 
 STAR_ALIGN_PROTECTED_OPTIONS = {

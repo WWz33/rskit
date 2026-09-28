@@ -328,6 +328,49 @@ class QuantExpressionTests(unittest.TestCase):
 
         trim_reads_mock.assert_called_once()
 
+    def test_prepare_samples_skips_trim_when_quant_complete(self) -> None:
+        # a finished sample must not be re-trimmed even when its clean reads
+        # were deleted to save space (or predate the gzip layout)
+        clean = self.root / "01_clean_data"
+        clean.mkdir(parents=True)
+        quant = self.root / "03_quant" / "sample1"
+        quant.mkdir(parents=True)
+        (quant / "quant.sf").write_text("stub", encoding="utf-8")
+        workdirs = {"clean_data": clean, "quant": self.root / "03_quant"}
+
+        with mock.patch("rskit.cli.trim_reads") as trim_reads_mock:
+            cli.prepare_samples(
+                [("sample1", "r1.fq.gz", "r2.fq.gz")],
+                workdirs,
+                trim=True,
+                threads=2,
+                skip_existing=True,
+            )
+
+        trim_reads_mock.assert_not_called()
+
+    def test_prepare_samples_retrims_when_quant_truncated(self) -> None:
+        # an empty quant.sf is a crashed run, not a finished sample
+        clean = self.root / "01_clean_data"
+        clean.mkdir(parents=True)
+        quant = self.root / "03_quant" / "sample1"
+        quant.mkdir(parents=True)
+        (quant / "quant.sf").write_text("", encoding="utf-8")
+        workdirs = {"clean_data": clean, "quant": self.root / "03_quant"}
+
+        with mock.patch(
+            "rskit.cli.trim_reads", return_value=("a_1.fq.gz", "a_2.fq.gz")
+        ) as trim_reads_mock:
+            cli.prepare_samples(
+                [("sample1", "r1.fq.gz", "r2.fq.gz")],
+                workdirs,
+                trim=True,
+                threads=2,
+                skip_existing=True,
+            )
+
+        trim_reads_mock.assert_called_once()
+
     def test_quant_export_uses_current_command_samples_by_default(self) -> None:
         with mock.patch("rskit.cli.SalmonExpressionExporter.export_gene_tables", return_value={}) as export_gene_tables, \
              mock.patch("rskit.cli.merge_salmon_quant_tables") as merge_salmon_quant_tables:
@@ -428,6 +471,53 @@ class QuantExpressionTests(unittest.TestCase):
         load_counts_from_file.assert_called_once()
         self.assertEqual(load_counts_from_file.call_args.args[0], str(precomputed_counts))
         self.assertEqual(list(load_counts_from_file.call_args.kwargs["metadata_df"].index), ["sample1", "sample2"])
+
+    def test_run_deseq2_cli_warns_when_explicit_gtf_is_ignored(self) -> None:
+        quant_dir = self.root / "03_quant"
+        quant_dir.mkdir(parents=True, exist_ok=True)
+        precomputed_counts = quant_dir / "gene_counts.csv"
+        pd.DataFrame({"sample1": [10], "sample2": [12]}, index=["geneA"]).to_csv(precomputed_counts)
+
+        coldata_path = self.root / "coldata.csv"
+        coldata_path.write_text(
+            "sample,condition\nsample1,A\nsample2,B\n", encoding="utf-8"
+        )
+
+        args = argparse.Namespace(
+            salmon_dir=str(quant_dir),
+            gene_counts=None,
+            coldata=str(coldata_path),
+            gtf="annotation.gtf",
+            tx2gene=None,
+            output_dir=str(self.root / "04_deseq2"),
+            design="~condition",
+            alpha=0.05,
+            lfc_threshold=2.0,
+            prefilter_min_count=10,
+            threads=None,
+            contrast=None,
+        )
+
+        with mock.patch(
+            "rskit.core.deseq2.Deseq2Analyzer.load_counts_from_file",
+            return_value=pd.DataFrame({"geneA": [10, 12]}, index=["sample1", "sample2"]),
+        ), mock.patch("rskit.core.deseq2.Deseq2Analyzer.analyze", return_value=pd.DataFrame()), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.save_results", return_value={}), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_volcano"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_pca"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_ma"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.get_summary", return_value={
+                 "total_genes": 1,
+                 "significant_genes": 0,
+                 "upregulated_genes": 0,
+                 "downregulated_genes": 0,
+                 "alpha": 0.05,
+                 "lfc_threshold": 2.0,
+             }):
+            with self.assertLogs("rskit.core.deseq2", level="WARNING") as logs:
+                run_deseq2_cli(args)
+
+        self.assertTrue(any("ignored" in message for message in logs.output))
 
     def test_run_deseq2_cli_exports_gene_tables_before_deseq(self) -> None:
         quant_dir = self.root / "03_quant"
@@ -949,6 +1039,8 @@ class QuantExpressionTests(unittest.TestCase):
             pipeline.run = mock.Mock(return_value={})
             pipeline.deseq2_analyzer = mock.Mock()
             pipeline.deseq2_analyzer.analyze.return_value = pd.DataFrame()
+            pipeline.deseq2_analyzer.save_results.return_value = {}
+            pipeline.deseq2_analyzer.get_summary.return_value = {"significant_genes": 0}
 
             with mock.patch.object(
                 SalmonExpressionExporter,
@@ -972,6 +1064,33 @@ class QuantExpressionTests(unittest.TestCase):
             self.assertEqual(list(passed_counts.index), ["sample1", "sample2"])
             self.assertEqual(list(passed_counts.columns), ["ENSG1", "ENSG2"])
             self.assertEqual(list(passed_counts.dtypes), ["int64", "int64"])
+
+    def test_run_with_deseq2_propagates_deseq2_failure(self) -> None:
+        # a failed analysis must not look like a successful run to API callers
+        with tempfile.TemporaryDirectory() as tempdir:
+            gene_counts = pd.DataFrame(
+                {"sample1": [10, 20], "sample2": [30, 40]},
+                index=pd.Index(["ENSG1", "ENSG2"], name="gene_id"),
+            )
+            pipeline = RNAseqPipeline(PipelineConfig(output_dir=tempdir))
+            pipeline.run = mock.Mock(return_value={})
+            pipeline.deseq2_analyzer = mock.Mock()
+            pipeline.deseq2_analyzer.analyze.side_effect = ValueError("boom")
+
+            with mock.patch.object(
+                SalmonExpressionExporter, "build_gene_tables", return_value={"counts": gene_counts}
+            ):
+                with self.assertRaisesRegex(ValueError, "boom"):
+                    pipeline.run_with_deseq2(
+                        samples={"sample1": {"fq1": "r1", "fq2": "r2"}, "sample2": {"fq1": "r1", "fq2": "r2"}},
+                        genome_fasta="genome.fa",
+                        gtf_file="genes.gtf",
+                        transcript_fasta="transcripts.fa",
+                        index_dir="index_dir",
+                        output_dir=tempdir,
+                        quant_output_dir=str(Path(tempdir) / "03_quant"),
+                        metadata={"sample1": "ctrl", "sample2": "treat"},
+                    )
 
     def test_plot_ma_uses_fitted_stat_res(self) -> None:
         analyzer = Deseq2Analyzer(DESeq2Config())

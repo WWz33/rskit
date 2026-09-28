@@ -47,9 +47,17 @@ def load_coldata(path: str, required_columns: Sequence[str] = ()) -> pd.DataFram
     if "sample" not in metadata.columns:
         raise ValueError("Coldata file must contain a 'sample' column")
 
+    # An empty sample cell would otherwise survive as a missing value and
+    # stringify to a sample literally named "nan" downstream, silently
+    # creating outputs for it.
+    if metadata["sample"].isna().any():
+        raise ValueError("Coldata file contains rows with an empty sample value")
+
     # pandas infers purely numeric sample names ("1", "2") as int64, which then
     # breaks .loc lookups against string sample IDs downstream; keep them strings
     metadata["sample"] = metadata["sample"].astype(str).str.strip()
+    if (metadata["sample"] == "").any():
+        raise ValueError("Coldata file contains rows with an empty sample value")
 
     duplicated = metadata.loc[metadata["sample"].duplicated(), "sample"].astype(str).unique()
     if len(duplicated):

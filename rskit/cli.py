@@ -141,14 +141,28 @@ def parse_samples_from_coldata(coldata: str):
 def trim_sample(sample_name: str, r1_path: Path, r2_path: Path,
                 workdirs: Dict[str, Path], threads: int, fastp_args: str,
                 skip_existing: bool = False) -> Tuple[str, str]:
-    """Trim one sample, reusing completed clean reads under --skip-existing."""
+    """Trim one sample, reusing completed work under --skip-existing.
+
+    A sample whose quant.sf already exists is finished: alignment and
+    quantification will both be skipped, so trimming it again (its clean
+    reads may have been deleted to save space, or predate the gzip layout)
+    would be pure waste. The clean paths are still returned; nothing reads
+    them once quantification is skipped.
+    """
     r1_clean, r2_clean = trimmed_read_paths(sample_name, workdirs)
-    if skip_existing and all(
-        Path(path).exists() and Path(path).stat().st_size > 0
-        for path in (r1_clean, r2_clean)
-    ):
-        logger.info(f"[{sample_name}] Trimmed reads already exist, skipping")
-        return r1_clean, r2_clean
+    if skip_existing:
+        quant_dir = workdirs.get('quant')
+        if quant_dir is not None:
+            quant_file = Path(quant_dir) / sample_name / "quant.sf"
+            if quant_file.exists() and quant_file.stat().st_size > 0:
+                logger.info(f"[{sample_name}] Quantification already complete, skipping trimming")
+                return r1_clean, r2_clean
+        if all(
+            Path(path).exists() and Path(path).stat().st_size > 0
+            for path in (r1_clean, r2_clean)
+        ):
+            logger.info(f"[{sample_name}] Trimmed reads already exist, skipping")
+            return r1_clean, r2_clean
     return trim_reads(r1_path, r2_path, sample_name, workdirs, threads, fastp_args)
 
 
