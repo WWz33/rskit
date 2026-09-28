@@ -162,6 +162,17 @@ class QuantExpressionTests(unittest.TestCase):
 
         self.assertNotIn("counts", captured)
 
+    def test_load_counts_from_file_rejects_nan_values(self) -> None:
+        counts_path = self.root / "counts.csv"
+        counts_path.write_text(
+            "gene_id,sample1,sample2\ngeneA,10,\ngeneB,0,1\n", encoding="utf-8"
+        )
+
+        analyzer = Deseq2Analyzer(DESeq2Config())
+
+        with self.assertRaisesRegex(ValueError, "NaN"):
+            analyzer.load_counts_from_file(str(counts_path))
+
     def test_parse_samples_from_coldata_accepts_tsv_contract(self) -> None:
         coldata_path = self.root / "coldata.tsv"
         for name in ("sample1_R1.fq.gz", "sample1_R2.fq.gz"):

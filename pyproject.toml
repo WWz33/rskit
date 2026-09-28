@@ -6,6 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "rskit"
 version = "0.2.0"
 description = "Python interface for RNA-seq analysis tools"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "WWz33", email = "ww992333333@gmail.com" }]
 requires-python = ">=3.11"
 dependencies = [
     "pandas>=3.0,<4",
@@ -30,6 +33,9 @@ all = [
 
 [project.scripts]
 rskit = "rskit.cli:main"
+
+[project.urls]
+Repository = "https://github.com/WWz33/rskit"
 
 [tool.setuptools.packages.find]
 include = ["rskit*"]

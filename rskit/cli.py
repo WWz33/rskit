@@ -740,7 +740,13 @@ Examples:
         parser.print_help(sys.stderr)
         parser.exit(2)
     else:
-        args.func(args)
+        try:
+            args.func(args)
+        except (ValueError, FileNotFoundError, ImportError, RuntimeError) as e:
+            # user-facing failures (bad input, missing tool, tool error) get a
+            # concise message; genuine bugs still raise with a traceback
+            logger.error(str(e))
+            sys.exit(1)
 
 
 if __name__ == "__main__":

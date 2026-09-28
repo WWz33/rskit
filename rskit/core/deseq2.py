@@ -120,6 +120,12 @@ class Deseq2Analyzer:
         else:
             counts_df = counts_df.T
 
+        if counts_df.isna().any().any():
+            raise ValueError(
+                f"Counts matrix {counts_file} contains NaN values; "
+                "check for missing entries before running DESeq2"
+            )
+
         # Ensure integer counts
         counts_df = counts_df.round().astype(int)
         
@@ -410,45 +416,45 @@ class Deseq2Analyzer:
 
             # Create volcano plot
             fig, ax = plt.subplots(figsize=(10, 8))
-            
-            # Plot non-significant genes
-            non_sig = self.stats_results[self.stats_results['padj'] >= self.config.alpha]
-            ax.scatter(non_sig['log2FoldChange'], -np.log10(non_sig['pvalue'].clip(lower=min_p)),
-                      alpha=0.5, label='Non-significant', color='gray', s=10)
+            try:
+                # Plot non-significant genes
+                non_sig = self.stats_results[self.stats_results['padj'] >= self.config.alpha]
+                ax.scatter(non_sig['log2FoldChange'], -np.log10(non_sig['pvalue'].clip(lower=min_p)),
+                          alpha=0.5, label='Non-significant', color='gray', s=10)
 
-            # Plot significant up-regulated genes (same criteria as save_results)
-            sig_up = self.stats_results[
-                (self.stats_results['padj'] < self.config.alpha) &
-                (self.stats_results['log2FoldChange'] > self.config.lfc_threshold)
-            ]
-            ax.scatter(sig_up['log2FoldChange'], -np.log10(sig_up['pvalue'].clip(lower=min_p)),
-                      alpha=0.7, label='Up-regulated', color='red', s=20)
+                # Plot significant up-regulated genes (same criteria as save_results)
+                sig_up = self.stats_results[
+                    (self.stats_results['padj'] < self.config.alpha) &
+                    (self.stats_results['log2FoldChange'] > self.config.lfc_threshold)
+                ]
+                ax.scatter(sig_up['log2FoldChange'], -np.log10(sig_up['pvalue'].clip(lower=min_p)),
+                          alpha=0.7, label='Up-regulated', color='red', s=20)
 
-            # Plot significant down-regulated genes
-            sig_down = self.stats_results[
-                (self.stats_results['padj'] < self.config.alpha) &
-                (self.stats_results['log2FoldChange'] < -self.config.lfc_threshold)
-            ]
-            ax.scatter(sig_down['log2FoldChange'], -np.log10(sig_down['pvalue'].clip(lower=min_p)),
-                      alpha=0.7, label='Down-regulated', color='blue', s=20)
+                # Plot significant down-regulated genes
+                sig_down = self.stats_results[
+                    (self.stats_results['padj'] < self.config.alpha) &
+                    (self.stats_results['log2FoldChange'] < -self.config.lfc_threshold)
+                ]
+                ax.scatter(sig_down['log2FoldChange'], -np.log10(sig_down['pvalue'].clip(lower=min_p)),
+                          alpha=0.7, label='Down-regulated', color='blue', s=20)
 
-            # Add labels and title
-            ax.set_xlabel('log2 Fold Change', fontsize=12)
-            ax.set_ylabel('-log10(p-value)', fontsize=12)
-            ax.set_title('Volcano Plot', fontsize=14)
-            ax.legend(loc='upper right')
-            ax.grid(True, alpha=0.3)
+                # Add labels and title
+                ax.set_xlabel('log2 Fold Change', fontsize=12)
+                ax.set_ylabel('-log10(p-value)', fontsize=12)
+                ax.set_title('Volcano Plot', fontsize=14)
+                ax.legend(loc='upper right')
+                ax.grid(True, alpha=0.3)
 
-            ax.axvline(x=0, color='black', linestyle='-', alpha=0.3)
-            
-            plt.tight_layout()
-            
-            if save_path:
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                self.logger.info(f"Volcano plot saved to {save_path}")
-            
-            plt.close()
-            
+                ax.axvline(x=0, color='black', linestyle='-', alpha=0.3)
+
+                plt.tight_layout()
+
+                if save_path:
+                    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                    self.logger.info(f"Volcano plot saved to {save_path}")
+            finally:
+                plt.close(fig)
+
         except ImportError:
             self.logger.error("Matplotlib is required for plotting. Install with: pip install matplotlib")
         except Exception as e:
@@ -505,36 +511,36 @@ class Deseq2Analyzer:
             
             # Create PCA plot
             fig, ax = plt.subplots(figsize=(10, 8))
-            
-            # Plot each condition with different color
-            unique_conditions = np.unique(conditions)
-            colors = plt.cm.tab10(np.linspace(0, 1, len(unique_conditions)))
-            
-            for i, condition in enumerate(unique_conditions):
-                mask = conditions == condition
-                ax.scatter(pca_result[mask, 0], pca_result[mask, 1], 
-                          label=condition, color=colors[i], s=100, alpha=0.7)
-            
-            # Add sample labels
-            for i, sample_name in enumerate(self.dds.obs_names):
-                ax.annotate(sample_name, (pca_result[i, 0], pca_result[i, 1]), 
-                           fontsize=8, alpha=0.7)
-            
-            # Add labels and title
-            ax.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]*100:.1f}%)', fontsize=12)
-            ax.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]*100:.1f}%)', fontsize=12)
-            ax.set_title('PCA Plot (Top Variable Genes)', fontsize=14)
-            ax.legend(loc='best')
-            ax.grid(True, alpha=0.3)
-            
-            plt.tight_layout()
-            
-            if save_path:
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                self.logger.info(f"PCA plot saved to {save_path}")
-            
-            plt.close()
-            
+            try:
+                # Plot each condition with different color
+                unique_conditions = np.unique(conditions)
+                colors = plt.cm.tab10(np.linspace(0, 1, len(unique_conditions)))
+
+                for i, condition in enumerate(unique_conditions):
+                    mask = conditions == condition
+                    ax.scatter(pca_result[mask, 0], pca_result[mask, 1],
+                              label=condition, color=colors[i], s=100, alpha=0.7)
+
+                # Add sample labels
+                for i, sample_name in enumerate(self.dds.obs_names):
+                    ax.annotate(sample_name, (pca_result[i, 0], pca_result[i, 1]),
+                               fontsize=8, alpha=0.7)
+
+                # Add labels and title
+                ax.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]*100:.1f}%)', fontsize=12)
+                ax.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]*100:.1f}%)', fontsize=12)
+                ax.set_title('PCA Plot (Top Variable Genes)', fontsize=14)
+                ax.legend(loc='best')
+                ax.grid(True, alpha=0.3)
+
+                plt.tight_layout()
+
+                if save_path:
+                    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                    self.logger.info(f"PCA plot saved to {save_path}")
+            finally:
+                plt.close(fig)
+
         except ImportError as e:
             self.logger.error(f"Required package not installed: {e}. Install with: pip install matplotlib scikit-learn")
         except Exception as e:

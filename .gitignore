@@ -10,6 +10,7 @@ data/results/*
 data/deseq2_*
 data/coldata.csv
 data/*.pdf
+out/
 logs/*
 *.log
 test.sh

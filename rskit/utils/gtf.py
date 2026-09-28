@@ -25,7 +25,6 @@ attr_format: setting the attribute format to 'ensembl' will use a simplified, an
 """
 
 import re
-from pathlib import Path
 
 re_attrs = re.compile(r'(\w+)(?:\s*=\s*|\s+)(?:"(.*?)"|(.*?))(?:;\s*|$)')
 id_keys = [
@@ -57,10 +56,6 @@ def iter_records(reader, attr_format=None, keep_line=False, append_versions=Fals
 
 def iter_gtf(reader, attr_format=None, keep_line=False, append_versions=False):
     return iter_records(reader, attr_format, keep_line, append_versions)
-
-
-# backwards-compatible alias; the old name shadowed the builtin
-open = iter_gtf
 
 
 def parse_line(line, attr_format=None, append_versions=False):
@@ -134,23 +129,3 @@ class GtfRecord:
 
     def __str__(self):
         return '\t'.join(str(f if f is not None else '.') for f in self.fields())
-
-def gtf_tx2gene(args):
-
-    num_records = 0
-    num_written = 0
-
-    with Path(args.output).open('w') as writer:
-        writer.write('transcript_id,gene_id\n')
-        with Path(args.input).open('r') as reader:
-            for rec in iter_records(reader, 'ensembl'):
-                num_records += 1
-
-                if rec.feature == 'transcript':
-                    transcript_id = rec.meta.get('transcript_id')
-                    gene_id = rec.meta.get('gene_id')
-                    if transcript_id and gene_id:
-                        writer.write(transcript_id + ',' + gene_id + '\n')
-                        num_written += 1
-
-    return dict(records=num_records, written=num_written)

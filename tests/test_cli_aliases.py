@@ -43,6 +43,35 @@ class CliAliasTests(unittest.TestCase):
         self.assertEqual(args.jobs, 4)
         self.assertTrue(args.merge_sf)
 
+    def test_main_reports_user_errors_with_exit_code_1(self) -> None:
+        # user-facing failures (bad input, missing tool) exit cleanly instead
+        # of dumping a traceback
+        argv = [
+            "rskit",
+            "quant",
+            "-s",
+            "sample1",
+            "-1",
+            "r1.fq.gz",
+            "-2",
+            "r2.fq.gz",
+            "-g",
+            "genome.fa",
+            "-gtf",
+            "annotation.gtf",
+            "-gf",
+            "transcripts.fa",
+            "-o",
+            "results",
+        ]
+
+        with mock.patch.object(sys, "argv", argv), \
+             mock.patch("rskit.cli.main_quant", side_effect=ValueError("bad input")):
+            with self.assertRaises(SystemExit) as ctx:
+                cli.main()
+
+        self.assertEqual(ctx.exception.code, 1)
+
     def test_quant_parallel_argument_is_removed(self) -> None:
         argv = [
             "rskit",

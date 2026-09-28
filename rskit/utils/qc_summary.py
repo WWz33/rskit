@@ -79,7 +79,7 @@ def _salmon_metrics(meta_path: Path) -> Dict[str, object]:
     }
 
 
-def write_qc_summary(workdirs: Dict[str, Path], skip_trimming: bool = False) -> Optional[Path]:
+def write_qc_summary(workdirs: Dict[str, Path]) -> Optional[Path]:
     """Write 00_summary/summary.csv from per-sample QC files. Returns its path."""
     rows = []
     quant_dir = workdirs["quant"]

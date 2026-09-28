@@ -111,7 +111,8 @@ class RNAseqPipeline:
         metadata_df.index.name = "sample"
         
         # Run DESeq2 analysis
-        deseq2_output_dir = Path(output_dir) / "deseq2"
+        # mirror the CLI layout: 04_deseq2 sits next to 03_quant
+        deseq2_output_dir = Path(quant_output_dir).parent / "04_deseq2"
         deseq2_output_dir.mkdir(parents=True, exist_ok=True)
         
         try:
