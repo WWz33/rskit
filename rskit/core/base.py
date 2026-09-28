@@ -3,6 +3,20 @@ import subprocess
 from abc import ABC, abstractmethod
 from rskit.utils.logger import get_logger
 
+
+def require_tools(*tool_names: str) -> None:
+    """Fail fast when required external tools are missing from PATH.
+
+    Called before any expensive work so the user sees a clear message instead
+    of a FileNotFoundError traceback from deep inside a subprocess call.
+    """
+    missing = [name for name in tool_names if shutil.which(name) is None]
+    if missing:
+        raise FileNotFoundError(
+            "Required tools not found in PATH: " + ", ".join(missing)
+        )
+
+
 class ToolBase(ABC):
     def __init__(self, tool_name: str):
         self.tool_name = tool_name
@@ -13,13 +27,15 @@ class ToolBase(ABC):
             self.logger.error(f"{self.tool_name} not found in PATH")
             return False
         return True
-    
+
     def _run_command(self, cmd: list, cwd: str = None) -> bool:
         try:
             self.logger.info(f"Running: {' '.join(cmd)}")
             subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=True)
             self.logger.info("Command completed successfully")
             return True
+        except FileNotFoundError as e:
+            raise RuntimeError(f"{self.tool_name} not found in PATH: {e}") from e
         except subprocess.CalledProcessError as e:
             stderr = (e.stderr or "").strip()
             self.logger.error(f"Command failed (exit {e.returncode}): {stderr}")

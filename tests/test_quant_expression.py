@@ -739,7 +739,8 @@ class QuantExpressionTests(unittest.TestCase):
 
         exported = {"gene_counts": str(self.root / "results" / "03_quant" / "gene_counts.csv")}
 
-        with mock.patch("rskit.cli.build_index_if_needed"), \
+        with mock.patch("rskit.cli.require_tools"), \
+             mock.patch("rskit.cli.build_index_if_needed"), \
              mock.patch("rskit.cli.prepare_samples", return_value={"sample1": {"fq1": "a", "fq2": "b"}}), \
              mock.patch("rskit.cli.run_quantification", return_value={"sample1": {}}), \
              mock.patch("rskit.cli.merge_salmon_quant_tables", return_value=exported), \
@@ -790,7 +791,8 @@ class QuantExpressionTests(unittest.TestCase):
             merge_sf=False,
         )
 
-        with mock.patch("rskit.cli.build_index_if_needed"), \
+        with mock.patch("rskit.cli.require_tools"), \
+             mock.patch("rskit.cli.build_index_if_needed"), \
              mock.patch("rskit.cli.prepare_samples", return_value={
                  "sample2": {"fq1": "b1", "fq2": "b2"},
                  "sample1": {"fq1": "a1", "fq2": "a2"},
@@ -803,6 +805,87 @@ class QuantExpressionTests(unittest.TestCase):
             export_tables.call_args.kwargs["sample_names"],
             ["sample1", "sample2"],
         )
+
+    def test_main_quant_preflight_rejects_missing_tools(self) -> None:
+        args = argparse.Namespace(output_dir=str(self.root / "results"), trim=False)
+
+        with mock.patch("shutil.which", return_value=None):
+            with self.assertRaisesRegex(FileNotFoundError, "STAR"):
+                cli.main_quant(args)
+
+    def test_main_quant_preflight_checks_fastp_when_trimming(self) -> None:
+        args = argparse.Namespace(output_dir=str(self.root / "results"), trim=True)
+
+        with mock.patch("shutil.which", return_value=None):
+            with self.assertRaisesRegex(FileNotFoundError, "fastp"):
+                cli.main_quant(args)
+
+    def test_main_quant_caps_threads_to_available_cpus(self) -> None:
+        # SLURM/cgroup allocations bound the whole quant phase, not just DESeq2
+        args = argparse.Namespace(
+            sample=None,
+            r1=None,
+            r2=None,
+            coldata="coldata.csv",
+            genome_fasta="genome.fa",
+            gtf_file="annotation.gtf",
+            transcript_fasta="transcripts.fa",
+            output_dir=str(self.root / "results"),
+            index_dir=None,
+            tx2gene=None,
+            threads=100,
+            jobs=1,
+            trim=False,
+            force_index=False,
+            skip_existing=False,
+            merge_sf=False,
+        )
+
+        with mock.patch("rskit.cli.os.sched_getaffinity", return_value={0, 1}), \
+             mock.patch("rskit.cli.require_tools"), \
+             mock.patch("rskit.cli.parse_samples_from_coldata",
+                        return_value=[("sample1", Path("r1"), Path("r2"))]), \
+             mock.patch("rskit.cli.build_index_if_needed") as build_index, \
+             mock.patch("rskit.cli.prepare_samples", return_value={}), \
+             mock.patch("rskit.cli.run_quantification", return_value={}), \
+             mock.patch("rskit.cli.export_quant_expression_tables", return_value={}):
+            cli.main_quant(args)
+
+        self.assertEqual(build_index.call_args.args[3], 2)
+
+    def test_prepare_samples_parallel_trim_aborts_and_names_failure(self) -> None:
+        samples_list = [("sample1", "r1", "r2"), ("bad", "r1", "r2"), ("sample3", "r1", "r2")]
+
+        def fake_trim(read1, read2, sample_name, *args, **kwargs):
+            if sample_name == "bad":
+                raise RuntimeError("fastp died")
+            return f"{sample_name}_1.fq.gz", f"{sample_name}_2.fq.gz"
+
+        with mock.patch("rskit.cli.trim_reads", side_effect=fake_trim):
+            with self.assertRaisesRegex(RuntimeError, "bad"):
+                cli.prepare_samples(
+                    samples_list,
+                    {"clean_data": self.root},
+                    trim=True,
+                    threads=4,
+                    jobs=3,
+                )
+
+    def test_load_tx2gene_map_accepts_headerless_non_ensembl_ids(self) -> None:
+        # the first row must not silently become the header for non-Ensembl IDs
+        tx2gene_path = self.root / "tx2gene.tsv"
+        tx2gene_path.write_text(
+            "YAL001C-t1\tYAL001C\nYAL002W-t1\tYAL002W\n", encoding="utf-8"
+        )
+
+        tx2gene_map, _ = SalmonExpressionExporter()._load_tx2gene_map(
+            tx2gene=str(tx2gene_path)
+        )
+
+        self.assertEqual(tx2gene_map.to_dict("records"), [
+            {"transcript_id": "YAL001C-t1", "gene_id": "YAL001C"},
+            {"transcript_id": "YAL002W-t1", "gene_id": "YAL002W"},
+        ])
 
     def test_lfc_shrink_coefficient_matches_design_column_naming(self) -> None:
         # pydeseq2 names LFC columns after the design matrix (formulaic treatment coding)

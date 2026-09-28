@@ -30,6 +30,12 @@ def _gff3_value(value: Optional[str], prefix: str) -> Optional[str]:
 # same feature "mRNA", so both must be accepted when building tx2gene
 TRANSCRIPT_FEATURES = frozenset({"transcript", "mRNA"})
 
+
+def _columns_look_like_identifiers(columns) -> bool:
+    """Header rows are words ('transcript_id'); transcript/gene IDs contain digits."""
+    values = [str(column) for column in columns]
+    return bool(values) and all(any(char.isdigit() for char in value) for value in values)
+
 SALMON_QUANT_PROTECTED_OPTIONS = {
     "-t",
     "--targets",
@@ -149,10 +155,16 @@ class SalmonExpressionExporter:
 
             if "transcript_id" not in tx2gene_map.columns or "gene_id" not in tx2gene_map.columns:
                 # headerless files are common; pandas treats their first row as column names.
-                # NOTE: the heuristic below assumes Ensembl-style IDs (ENST/ENSG prefixes);
-                # headerless files from other annotations may need manual column names.
-                if tx2gene_map.columns.astype(str).str.match(r"^\w*(ENST|ENSG)\d").all():
+                # Ensembl-style IDs (ENST/ENSG) are recognized directly; for other
+                # annotations, identifiers almost always contain digits while header
+                # words like "transcript_id" do not. Without this check the first
+                # mapping row would silently become the header.
+                columns_are_ids = tx2gene_map.columns.astype(str).str.match(
+                    r"^\w*(ENST|ENSG)\d"
+                ).all()
+                if columns_are_ids or _columns_look_like_identifiers(tx2gene_map.columns):
                     tx2gene_map = pd.read_csv(tx2gene_path, sep=separator, header=None)
+                    self.logger.warning("tx2gene file has no header row; reading as headerless")
                 if len(tx2gene_map.columns) < 2:
                     raise ValueError("tx2gene map must have at least 2 columns (transcript_id, gene_id)")
                 tx2gene_map = tx2gene_map.iloc[:, :2].copy()

@@ -262,7 +262,7 @@ Write example input template files.
 
 | Short | Long | Description |
 |-------|------|-------------|
-| n/a | `template_name` | Positional template type: `coldata` or `contrast`. |
+| n/a | `template_name` | Positional template type: `coldata`. |
 | `-o` | `--output` | Required output path; `.csv` writes CSV and `.tsv`/`.txt` writes TSV. |
 | `-f` | `--force` | Overwrite the output file if it already exists. |
 

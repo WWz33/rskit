@@ -262,7 +262,7 @@ DESeq2 差异表达分析。
 
 | 简写 | 长参数 | 说明 |
 |------|--------|------|
-| n/a | `template_name` | 位置参数，模板类型：`coldata` 或 `contrast`。 |
+| n/a | `template_name` | 位置参数，模板类型：`coldata`。 |
 | `-o` | `--output` | 必需输出路径；`.csv` 写 CSV，`.tsv`/`.txt` 写 TSV。 |
 | `-f` | `--force` | 输出文件已存在时允许覆盖。 |
 

@@ -10,7 +10,7 @@ from rskit.input_validation import validate_input_files
 from rskit.templates import write_template
 from rskit.config import StarConfig, SalmonConfig, PipelineConfig, DESeq2Config
 from rskit.core.pipeline import RNAseqPipeline
-from rskit.core.base import Tool
+from rskit.core.base import Tool, require_tools
 from rskit.core.deseq2 import run_deseq2_cli
 from rskit.core.wgcna import run_wgcna_cli
 from rskit.utils.logger import get_logger
@@ -180,12 +180,33 @@ def prepare_samples(samples_list, workdirs: Dict[str, Path],
             ]
 
             samples = {}
+            failures = []
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {executor.submit(trim_sample_wrapper, args): args[0] for args in trim_args}
+                abort = False
                 for i, future in enumerate(as_completed(futures), 1):
-                    sample_name, r1_clean, r2_clean = future.result()
-                    samples[sample_name] = {'fq1': r1_clean, 'fq2': r2_clean}
+                    sample_name = futures[future]
+                    if abort:
+                        future.cancel()
+                        continue
+                    try:
+                        done_name, r1_clean, r2_clean = future.result()
+                    except Exception as e:
+                        failures.append((sample_name, e))
+                        logger.error(f"[{sample_name}] Trimming failed: {e}")
+                        abort = True
+                        for pending in futures:
+                            pending.cancel()
+                        continue
+                    samples[done_name] = {'fq1': r1_clean, 'fq2': r2_clean}
                     logger.info(f"Trim progress: {i}/{num_samples} completed")
+
+            if failures:
+                raise RuntimeError(
+                    f"{len(failures)} sample(s) failed trimming: "
+                    + ", ".join(name for name, _ in failures)
+                    + ". Re-run with --skip-existing to reuse completed trimming."
+                ) from failures[0][1]
         else:
             # Sequential trimming
             samples = {}
@@ -307,6 +328,15 @@ def run_quant_phase(args, workdirs: Dict[str, Path]) -> Tuple[List, Dict[str, st
     salmon_args = getattr(args, "salmon_args", "")
     fastp_args = getattr(args, "fastp_args", "")
 
+    # Fail fast on missing external tools before any expensive work starts
+    required_tools = ["STAR", "salmon"]
+    if getattr(args, "trim", False):
+        required_tools.append("fastp")
+    require_tools(*required_tools)
+
+    # The cluster/cgroup allocation bounds every phase, not just DESeq2 inference
+    threads = cap_threads_to_available_cpus(args.threads)
+
     # Convert paths to absolute
     genome_fasta = str(Path(args.genome_fasta).resolve())
     gtf_file = str(Path(args.gtf_file).resolve())
@@ -328,11 +358,11 @@ def run_quant_phase(args, workdirs: Dict[str, Path]) -> Tuple[List, Dict[str, st
 
     # Determine and check index directory
     index_dir = Path(args.index_dir).resolve() if args.index_dir else workdirs['index']
-    build_index_if_needed(index_dir, genome_fasta, gtf_file, args.threads, args.force_index, star_args)
+    build_index_if_needed(index_dir, genome_fasta, gtf_file, threads, args.force_index, star_args)
 
     # Calculate sample scheduling plan
     num_samples = len(samples_list)
-    sample_plan = calculate_sample_plan(args.threads, args.jobs, num_samples)
+    sample_plan = calculate_sample_plan(threads, args.jobs, num_samples)
     log_sample_plan(sample_plan, num_samples)
 
     # Prepare and run samples
