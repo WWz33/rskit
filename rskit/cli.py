@@ -17,7 +17,7 @@ from rskit.utils.logger import get_logger
 from rskit.utils.validators import check_and_prepare_index
 from rskit.utils.parallel import calculate_sample_plan, run_samples_parallel
 from rskit.utils.qc_summary import write_qc_summary
-from rskit.core.star import StarIndexer
+from rskit.core.star import StarIndexer, index_input_changes
 from rskit.core.salmon import SalmonExpressionExporter, merge_salmon_quant_tables
 
 logger = get_logger(__name__)
@@ -235,10 +235,20 @@ def prepare_samples(samples_list, workdirs: Dict[str, Path],
     return samples
 
 
-def build_index_if_needed(index_dir: Path, genome_fasta: str, gtf_file: str, 
+def build_index_if_needed(index_dir: Path, genome_fasta: str, gtf_file: str,
                           threads: int, force_index: bool, star_args: str = "") -> bool:
     """Check and build index if needed, returns True if index was built"""
     index_dir, needs_build = check_and_prepare_index(str(index_dir), force_index)
+    if not needs_build:
+        changes = index_input_changes(index_dir, genome_fasta, gtf_file)
+        if changes is None:
+            logger.info(f"No build-input fingerprint at {index_dir}; skipping input verification")
+        elif changes:
+            logger.warning(
+                f"STAR index at {index_dir} was built from different inputs "
+                f"(changed: {', '.join(changes)}); alignment will use the existing index. "
+                "Rebuild with --force-index if this is unintended."
+            )
     if needs_build:
         indexer = StarIndexer(StarConfig(threads=threads, extra_args=star_args))
         indexer.build_index(genome_fasta, gtf_file, str(index_dir), force=force_index)

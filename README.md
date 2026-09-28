@@ -181,7 +181,7 @@ Complete pipeline: quantification + DESeq2 analysis.
 | `-gtf` | `--gtf-file` | Required GTF/GFF annotation used by STAR and to create `tx2gene.tsv` when `--tx2gene` is not provided. |
 | `-gf` | `--transcript-fasta` | Required transcript FASTA used by Salmon quantification. |
 | `-o` | `--output-dir` | Required workflow output directory; rskit creates `00_index/`, `02_bam/`, `03_quant/`, and `04_deseq2/` under it. |
-| `-idx` | `--index-dir` | Optional existing STAR index directory; defaults to `<output-dir>/00_index`. |
+| `-idx` | `--index-dir` | Optional existing STAR index directory; defaults to `<output-dir>/00_index`. rskit records the build inputs in `.rskit_index.json` inside the index directory and warns when the current FASTA/GTF differ; rebuild with `-fi`. |
 | `-t2g` | `--tx2gene` | Optional transcript-to-gene mapping file; if omitted, rskit writes `03_quant/tx2gene.tsv` from `--gtf-file`. |
 | `-t` | `--threads` | Total thread budget for sample processing. Default: `8`. |
 | `-j` | `--jobs` | Maximum number of samples to process concurrently. Default: `1`. |
@@ -212,7 +212,7 @@ Complete quantification pipeline: index -> align -> quant -> gene-level table ex
 | `-gtf` | `--gtf-file` | Required annotation used by STAR and `tx2gene.tsv` generation. |
 | `-gf` | `--transcript-fasta` | Required transcript FASTA used by Salmon. |
 | `-o` | `--output-dir` | Required output/work directory. |
-| `-idx` | `--index-dir` | Optional existing STAR index directory; defaults to `<output-dir>/00_index`. |
+| `-idx` | `--index-dir` | Optional existing STAR index directory; defaults to `<output-dir>/00_index`. rskit records the build inputs in `.rskit_index.json` inside the index directory and warns when the current FASTA/GTF differ; rebuild with `-fi`. |
 | `-t2g` | `--tx2gene` | Optional transcript-to-gene mapping for gene-level export; otherwise generated from `--gtf-file`. |
 | `-t` | `--threads` | Total thread budget for sample processing. Default: `8`. |
 | `-j` | `--jobs` | Maximum number of samples to process concurrently. Default: `1`. |

@@ -181,7 +181,7 @@ geneB,0.00,1.00,2.32,2.58
 | `-gtf` | `--gtf-file` | 必需的 GTF/GFF annotation，用于 STAR，并在未提供 `--tx2gene` 时生成 `tx2gene.tsv`。 |
 | `-gf` | `--transcript-fasta` | 必需的 transcript FASTA，用于 Salmon 定量。 |
 | `-o` | `--output-dir` | 必需的流程输出目录；rskit 会在其中创建 `00_index/`、`02_bam/`、`03_quant/` 和 `04_deseq2/`。 |
-| `-idx` | `--index-dir` | 可选的已有 STAR index 目录；默认使用 `<output-dir>/00_index`。 |
+| `-idx` | `--index-dir` | 可选的已有 STAR index 目录；默认使用 `<output-dir>/00_index`。rskit 会在索引目录记录构建输入（`.rskit_index.json`），当前 FASTA/GTF 与构建时不一致时告警；需要重建时使用 `-fi`。 |
 | `-t2g` | `--tx2gene` | 可选 transcript-to-gene mapping；未提供时从 `--gtf-file` 写出 `03_quant/tx2gene.tsv`。 |
 | `-t` | `--threads` | 样本处理使用的总线程预算。默认：`8`。 |
 | `-j` | `--jobs` | 同时处理的最大样本数。默认：`1`。 |
@@ -212,7 +212,7 @@ geneB,0.00,1.00,2.32,2.58
 | `-gtf` | `--gtf-file` | 必需 annotation，用于 STAR 和 `tx2gene.tsv` 生成。 |
 | `-gf` | `--transcript-fasta` | 必需 transcript FASTA，用于 Salmon。 |
 | `-o` | `--output-dir` | 必需输出/工作目录。 |
-| `-idx` | `--index-dir` | 可选已有 STAR index 目录；默认使用 `<output-dir>/00_index`。 |
+| `-idx` | `--index-dir` | 可选已有 STAR index 目录；默认使用 `<output-dir>/00_index`。rskit 会在索引目录记录构建输入（`.rskit_index.json`），当前 FASTA/GTF 与构建时不一致时告警；需要重建时使用 `-fi`。 |
 | `-t2g` | `--tx2gene` | 可选 transcript-to-gene mapping，用于基因级导出；未提供时从 `--gtf-file` 生成。 |
 | `-t` | `--threads` | 样本处理使用的总线程预算。默认：`8`。 |
 | `-j` | `--jobs` | 同时处理的最大样本数。默认：`1`。 |

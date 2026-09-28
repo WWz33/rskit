@@ -1,6 +1,8 @@
-from pathlib import Path
-from typing import Optional
+import json
 import shutil
+import subprocess
+from pathlib import Path
+from typing import Dict, List, Optional
 from rskit.cli_args import merge_extra_args
 from rskit.core.base import ToolBase, Tool
 from rskit.config import StarConfig
@@ -27,6 +29,59 @@ STAR_ALIGN_PROTECTED_OPTIONS = {
     "--outSAMtype",
     "--quantMode",
 }
+
+# fingerprint of the inputs a STAR index was built from; lets rskit warn when
+# the genome FASTA or GTF changed after the index was built (STAR itself would
+# silently align against the stale index)
+INDEX_FINGERPRINT_NAME = ".rskit_index.json"
+
+
+def _file_fingerprint(path) -> Dict[str, object]:
+    file_path = Path(path)
+    stat = file_path.stat()
+    return {"path": str(file_path.resolve()), "size": stat.st_size, "mtime": stat.st_mtime}
+
+
+def _star_version() -> Optional[str]:
+    try:
+        result = subprocess.run(["STAR", "--version"], capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return result.stdout.strip() or None
+
+
+def read_index_fingerprint(index_dir) -> Optional[dict]:
+    fingerprint_path = Path(index_dir) / INDEX_FINGERPRINT_NAME
+    if not fingerprint_path.exists():
+        return None
+    try:
+        return json.loads(fingerprint_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def index_input_changes(index_dir, genome_fasta, gtf_file) -> Optional[List[str]]:
+    """Compare current inputs against the fingerprint recorded at index build.
+
+    None: the index carries no fingerprint (built by hand or by an older
+    rskit) and cannot be verified. []: inputs unchanged. Otherwise the names
+    of the inputs that changed since the build.
+    """
+    fingerprint = read_index_fingerprint(index_dir)
+    if fingerprint is None:
+        return None
+    changed = []
+    for key, path in (("genome_fasta", genome_fasta), ("gtf_file", gtf_file)):
+        try:
+            current = _file_fingerprint(path)
+        except OSError:
+            # input vanished; alignment only needs the index, so surface it
+            # as a change rather than failing here
+            changed.append(key)
+            continue
+        if fingerprint.get(key) != current:
+            changed.append(key)
+    return changed
 
 class StarIndexer:
     def __init__(self, config: StarConfig):
@@ -56,7 +111,21 @@ class StarIndexer:
         cmd = merge_extra_args(cmd, self.config.extra_args, STAR_INDEX_PROTECTED_OPTIONS)
         
         self.logger.info(f"Building STAR index in {index_dir}")
-        return self.tool._run_command(cmd)
+        built = self.tool._run_command(cmd)
+        self._write_fingerprint(index_path, genome_fasta, gtf_file)
+        return built
+
+    def _write_fingerprint(self, index_path: Path, genome_fasta: str, gtf_file: str) -> None:
+        """Record the build inputs so later runs can detect annotation changes."""
+        fingerprint = {
+            "genome_fasta": _file_fingerprint(genome_fasta),
+            "gtf_file": _file_fingerprint(gtf_file),
+            "sjdb_overhang": self.config.sjdb_overhang,
+            "star_version": _star_version(),
+        }
+        fingerprint_path = index_path / INDEX_FINGERPRINT_NAME
+        fingerprint_path.write_text(json.dumps(fingerprint, indent=2), encoding="utf-8")
+        self.logger.info(f"Recorded index build inputs in {fingerprint_path}")
 
 class StarAligner:
     def __init__(self, config: StarConfig):

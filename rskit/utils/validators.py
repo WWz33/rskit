@@ -21,8 +21,15 @@ def validate_dir(dir_path: str) -> bool:
 
 def check_star_index(index_dir: str) -> bool:
     index_path = Path(index_dir)
-    required_files = ["SA", "SAindex", "Genome", "chrNameLength", "genomeParameters.txt"]
-    return all(
+    # STAR writes chrNameLength.txt; accept the extensionless variant too so
+    # hand-made or exotic layouts are not rejected
+    name_length_files = ("chrNameLength.txt", "chrNameLength")
+    has_name_length = any(
+        (index_path / f).exists() and (index_path / f).stat().st_size > 0
+        for f in name_length_files
+    )
+    required_files = ["SA", "SAindex", "Genome", "genomeParameters.txt"]
+    return has_name_length and all(
         (index_path / f).exists() and (index_path / f).stat().st_size > 0
         for f in required_files
     )

@@ -162,6 +162,27 @@ class QuantExpressionTests(unittest.TestCase):
 
         self.assertNotIn("counts", captured)
 
+    def test_build_index_if_needed_warns_on_changed_inputs(self) -> None:
+        with mock.patch("rskit.cli.check_and_prepare_index", return_value=(Path("/idx"), False)), \
+             mock.patch("rskit.cli.index_input_changes", return_value=["gtf_file"]), \
+             mock.patch("rskit.cli.StarIndexer") as indexer_cls:
+            with self.assertLogs("rskit.cli", level="WARNING") as logs:
+                built = cli.build_index_if_needed(Path("/idx"), "genome.fa", "genes.gtf", 2, False)
+
+        self.assertFalse(built)
+        indexer_cls.assert_not_called()
+        self.assertTrue(
+            any("different inputs" in message and "gtf_file" in message for message in logs.output)
+        )
+
+    def test_build_index_if_needed_silent_without_fingerprint(self) -> None:
+        with mock.patch("rskit.cli.check_and_prepare_index", return_value=(Path("/idx"), False)), \
+             mock.patch("rskit.cli.index_input_changes", return_value=None), \
+             mock.patch("rskit.cli.StarIndexer") as indexer_cls:
+            cli.build_index_if_needed(Path("/idx"), "genome.fa", "genes.gtf", 2, False)
+
+        indexer_cls.assert_not_called()
+
     def test_load_counts_from_file_rejects_nan_values(self) -> None:
         counts_path = self.root / "counts.csv"
         counts_path.write_text(
