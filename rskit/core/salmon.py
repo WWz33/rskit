@@ -25,6 +25,11 @@ def _gff3_value(value: Optional[str], prefix: str) -> Optional[str]:
         value = value[len(tag):]
     return value or None
 
+
+# GTF annotation writes "transcript" records; GFF3 (Ensembl/NCBI) calls the
+# same feature "mRNA", so both must be accepted when building tx2gene
+TRANSCRIPT_FEATURES = frozenset({"transcript", "mRNA"})
+
 SALMON_QUANT_PROTECTED_OPTIONS = {
     "-t",
     "--targets",
@@ -97,7 +102,7 @@ class SalmonExpressionExporter:
         with opener(gtf_file, "rt", encoding="utf-8", errors="ignore") as reader:
             for rec in iter_gtf(reader, "ensembl"):
                 num_records += 1
-                if rec.feature != "transcript":
+                if rec.feature not in TRANSCRIPT_FEATURES:
                     continue
                 meta = rec.meta or {}
                 transcript_id = meta.get("transcript_id") or _gff3_value(meta.get("ID"), "transcript")
@@ -108,7 +113,7 @@ class SalmonExpressionExporter:
         if not tx2gene_map:
             raise ValueError(
                 f"No transcript-to-gene mappings extracted from {gtf_file}; "
-                "check that it is a GTF/GFF3 with transcript records"
+                "check that it is a GTF with transcript records or a GFF3 with mRNA records"
             )
 
         self.logger.info(f"Scanned {num_records} GTF/GFF3 lines")

@@ -235,6 +235,29 @@ class QuantExpressionTests(unittest.TestCase):
             {"transcript_id": "tx2", "gene_id": "geneB"},
         ])
 
+    def test_exporter_builds_tx2gene_from_gff3_mrna_records(self) -> None:
+        # GFF3 annotation uses "mRNA" for transcript features (GTF uses "transcript")
+        gff3_path = self.root / "annotation.gff3"
+        gff3_path.write_text(
+            "\n".join(
+                [
+                    "##gff-version 3",
+                    'chr1\tsrc\tgene\t1\t100\t.\t+\t.\tID=gene:geneA;Name=geneA',
+                    'chr1\tsrc\tmRNA\t1\t100\t.\t+\t.\tID=transcript:tx1;Parent=gene:geneA',
+                    'chr1\tsrc\tmRNA\t101\t200\t.\t+\t.\tID=transcript:tx2;Parent=gene:geneB',
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        tx2gene = SalmonExpressionExporter()._create_tx2gene_from_gtf(str(gff3_path))
+
+        self.assertEqual(tx2gene.to_dict("records"), [
+            {"transcript_id": "tx1", "gene_id": "geneA"},
+            {"transcript_id": "tx2", "gene_id": "geneB"},
+        ])
+
     def test_quant_export_uses_current_command_samples_by_default(self) -> None:
         with mock.patch("rskit.cli.SalmonExpressionExporter.export_gene_tables", return_value={}) as export_gene_tables, \
              mock.patch("rskit.cli.merge_salmon_quant_tables") as merge_salmon_quant_tables:
