@@ -100,6 +100,13 @@ class InputValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "transpose"):
             validate_input_files(str(coldata), expression=str(expression))
 
+    def test_validate_input_files_rejects_missing_design_values(self) -> None:
+        coldata = self.root / "coldata.csv"
+        coldata.write_text("sample,condition\nsample1,A\nsample2,\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "contains missing values"):
+            validate_input_files(str(coldata))
+
     def test_doctor_cli_uses_validate_input_files(self) -> None:
         args = argparse.Namespace(
             coldata="coldata.csv",

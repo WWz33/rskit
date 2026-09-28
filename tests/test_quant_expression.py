@@ -183,6 +183,15 @@ class QuantExpressionTests(unittest.TestCase):
 
         indexer_cls.assert_not_called()
 
+    def test_load_metadata_rejects_missing_design_values(self) -> None:
+        coldata = self.root / "coldata.csv"
+        coldata.write_text("sample,condition\nsample1,A\nsample2,\n", encoding="utf-8")
+
+        analyzer = Deseq2Analyzer(DESeq2Config())
+
+        with self.assertRaisesRegex(ValueError, "condition"):
+            analyzer.load_metadata(str(coldata), required_columns=["condition"])
+
     def test_load_counts_from_file_rejects_nan_values(self) -> None:
         counts_path = self.root / "counts.csv"
         counts_path.write_text(
@@ -391,6 +400,27 @@ class QuantExpressionTests(unittest.TestCase):
             )
 
         trim_reads_mock.assert_called_once()
+
+    def test_prepare_samples_skips_trim_when_alignment_complete(self) -> None:
+        # re-quantification only needs the BAM; trimming would be waste
+        clean = self.root / "01_clean_data"
+        clean.mkdir(parents=True)
+        bam_sample_dir = self.root / "02_bam" / "sample1"
+        bam_sample_dir.mkdir(parents=True)
+        (bam_sample_dir / "sample1_Aligned.toTranscriptome.out.bam").write_text("stub", encoding="utf-8")
+        (bam_sample_dir / "sample1_Log.final.out").write_text("stub", encoding="utf-8")
+        workdirs = {"clean_data": clean, "bam": self.root / "02_bam"}
+
+        with mock.patch("rskit.cli.trim_reads") as trim_reads_mock:
+            cli.prepare_samples(
+                [("sample1", "r1.fq.gz", "r2.fq.gz")],
+                workdirs,
+                trim=True,
+                threads=2,
+                skip_existing=True,
+            )
+
+        trim_reads_mock.assert_not_called()
 
     def test_quant_export_uses_current_command_samples_by_default(self) -> None:
         with mock.patch("rskit.cli.SalmonExpressionExporter.export_gene_tables", return_value={}) as export_gene_tables, \
@@ -1008,6 +1038,152 @@ class QuantExpressionTests(unittest.TestCase):
             {"transcript_id": "YAL001C-t1", "gene_id": "YAL001C"},
             {"transcript_id": "YAL002W-t1", "gene_id": "YAL002W"},
         ])
+
+    def test_pipeline_run_reuses_completed_alignment_before_align(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            bam_sample_dir = Path(tempdir) / "02_bam" / "sample1"
+            bam_sample_dir.mkdir(parents=True)
+            (bam_sample_dir / "sample1_Aligned.toTranscriptome.out.bam").write_text(
+                "stub", encoding="utf-8"
+            )
+            (bam_sample_dir / "sample1_Log.final.out").write_text("stub", encoding="utf-8")
+
+            pipeline = RNAseqPipeline(PipelineConfig(output_dir=tempdir))
+            pipeline.aligner.align = mock.Mock()
+            pipeline.quantifier.quantify = mock.Mock(return_value={"quant": "q"})
+            pipeline.indexer.build_index = mock.Mock(return_value=True)
+
+            pipeline.run(
+                samples={"sample1": {"fq1": "r1", "fq2": "r2"}},
+                genome_fasta="genome.fa",
+                gtf_file="genes.gtf",
+                transcript_fasta="transcripts.fa",
+                index_dir=str(Path(tempdir) / "index"),
+                output_dir=str(Path(tempdir) / "02_bam"),
+                quant_output_dir=str(Path(tempdir) / "03_quant"),
+                skip_existing=True,
+            )
+
+        pipeline.aligner.align.assert_not_called()
+        self.assertEqual(
+            pipeline.quantifier.quantify.call_args.args[1],
+            str(bam_sample_dir / "sample1_Aligned.toTranscriptome.out.bam"),
+        )
+
+    def test_pipeline_run_realigns_when_final_log_missing(self) -> None:
+        # STAR writes Log.final.out only after success; BAM without it is a crash
+        with tempfile.TemporaryDirectory() as tempdir:
+            bam_sample_dir = Path(tempdir) / "02_bam" / "sample1"
+            bam_sample_dir.mkdir(parents=True)
+            (bam_sample_dir / "sample1_Aligned.toTranscriptome.out.bam").write_text(
+                "stub", encoding="utf-8"
+            )
+
+            pipeline = RNAseqPipeline(PipelineConfig(output_dir=tempdir))
+            pipeline.aligner.align = mock.Mock(
+                return_value={"bam": "b", "transcriptome_bam": "tb", "log": "l"}
+            )
+            pipeline.quantifier.quantify = mock.Mock(return_value={"quant": "q"})
+            pipeline.indexer.build_index = mock.Mock(return_value=True)
+
+            pipeline.run(
+                samples={"sample1": {"fq1": "r1", "fq2": "r2"}},
+                genome_fasta="genome.fa",
+                gtf_file="genes.gtf",
+                transcript_fasta="transcripts.fa",
+                index_dir=str(Path(tempdir) / "index"),
+                output_dir=str(Path(tempdir) / "02_bam"),
+                quant_output_dir=str(Path(tempdir) / "03_quant"),
+                skip_existing=True,
+            )
+
+        pipeline.aligner.align.assert_called_once()
+
+    def test_main_quant_writes_run_manifest(self) -> None:
+        args = argparse.Namespace(
+            sample=None,
+            r1=None,
+            r2=None,
+            coldata="coldata.csv",
+            genome_fasta="genome.fa",
+            gtf_file="annotation.gtf",
+            transcript_fasta="transcripts.fa",
+            output_dir=str(self.root / "results"),
+            index_dir=None,
+            tx2gene=None,
+            threads=8,
+            jobs=1,
+            trim=False,
+            force_index=False,
+            skip_existing=False,
+            merge_sf=False,
+            star_args="",
+            salmon_args="",
+            fastp_args="",
+        )
+        exported = {
+            "gene_counts": "gc.csv",
+            "gene_tpm": "tpm.csv",
+            "gene_log2_tpm": "l.csv",
+            "tx2gene": "t2g.tsv",
+        }
+
+        with mock.patch("rskit.cli.require_tools"), \
+             mock.patch("rskit.cli.parse_samples_from_coldata",
+                        return_value=[("sample1", Path("r1"), Path("r2"))]), \
+             mock.patch("rskit.cli.build_index_if_needed"), \
+             mock.patch("rskit.cli.prepare_samples",
+                        return_value={"sample1": {"fq1": "a", "fq2": "b"}}), \
+             mock.patch("rskit.cli.run_quantification", return_value={"sample1": {}}), \
+             mock.patch("rskit.cli.export_quant_expression_tables", return_value=exported), \
+             mock.patch("rskit.cli.write_qc_summary"), \
+             mock.patch("rskit.cli.tool_version", return_value="1.2.3"):
+            cli.main_quant(args)
+
+        manifest = json.loads(
+            (self.root / "results" / "03_quant" / "manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(manifest["command"], "quant")
+        self.assertEqual(manifest["samples"], ["sample1"])
+        self.assertEqual(manifest["tools"]["STAR"], "1.2.3")
+        self.assertNotIn("fastp", manifest["tools"])
+        self.assertEqual(manifest["outputs"]["gene_counts"], "gc.csv")
+
+    def test_run_quant_phase_writes_qc_summary_when_quantification_fails(self) -> None:
+        args = argparse.Namespace(
+            sample=None,
+            r1=None,
+            r2=None,
+            coldata="coldata.csv",
+            genome_fasta="genome.fa",
+            gtf_file="annotation.gtf",
+            transcript_fasta="transcripts.fa",
+            output_dir=str(self.root / "results"),
+            index_dir=None,
+            tx2gene=None,
+            threads=8,
+            jobs=1,
+            trim=False,
+            force_index=False,
+            skip_existing=True,
+            merge_sf=False,
+            star_args="",
+            salmon_args="",
+            fastp_args="",
+        )
+
+        with mock.patch("rskit.cli.require_tools"), \
+             mock.patch("rskit.cli.parse_samples_from_coldata",
+                        return_value=[("sample1", Path("r1"), Path("r2"))]), \
+             mock.patch("rskit.cli.build_index_if_needed"), \
+             mock.patch("rskit.cli.prepare_samples",
+                        return_value={"sample1": {"fq1": "a", "fq2": "b"}}), \
+             mock.patch("rskit.cli.run_quantification", side_effect=RuntimeError("STAR died")), \
+             mock.patch("rskit.cli.write_qc_summary") as summary:
+            with self.assertRaisesRegex(RuntimeError, "STAR died"):
+                cli.main_quant(args)
+
+        summary.assert_called_once()
 
     def test_lfc_shrink_coefficient_matches_design_column_naming(self) -> None:
         # pydeseq2 names LFC columns after the design matrix (formulaic treatment coding)

@@ -7,6 +7,7 @@ from rskit.input_contracts import (
     ensure_genes_by_samples,
     load_coldata,
     read_table,
+    require_no_missing_values,
     resolve_path_from_table,
 )
 
@@ -24,6 +25,7 @@ def validate_input_files(
         required_columns.extend(["r1", "r2"])
 
     metadata = load_coldata(coldata, required_columns=_unique(required_columns))
+    require_no_missing_values(metadata, _unique(required_columns))
     messages = [f"coldata: {len(metadata.index)} samples"]
 
     if check_reads:

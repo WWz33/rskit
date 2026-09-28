@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 from abc import ABC, abstractmethod
+from typing import Optional
 from rskit.utils.logger import get_logger
 
 
@@ -15,6 +16,20 @@ def require_tools(*tool_names: str) -> None:
         raise FileNotFoundError(
             "Required tools not found in PATH: " + ", ".join(missing)
         )
+
+
+def tool_version(tool_name: str) -> Optional[str]:
+    """Best-effort first line of ``tool --version``, or None if unavailable."""
+    try:
+        result = subprocess.run(
+            [tool_name, "--version"], capture_output=True, text=True, check=True
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    output = (result.stdout or "").strip() or (result.stderr or "").strip()
+    if not output:
+        return None
+    return output.splitlines()[0].strip() or None
 
 
 class ToolBase(ABC):

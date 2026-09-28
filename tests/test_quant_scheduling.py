@@ -147,6 +147,24 @@ class QuantSchedulingTests(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 process_single_sample(args)
 
+    def test_process_single_sample_reuses_completed_alignment(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            args, workdirs = self._sample_args(Path(tempdir))
+            (workdirs["bam"] / "sample1" / "sample1_Aligned.toTranscriptome.out.bam").write_text(
+                "stub", encoding="utf-8"
+            )
+            (workdirs["bam"] / "sample1" / "sample1_Log.final.out").write_text(
+                "stub", encoding="utf-8"
+            )
+
+            with mock.patch("rskit.core.star.StarAligner") as aligner_cls, \
+                 mock.patch("rskit.core.salmon.SalmonQuantifier") as quant_cls:
+                name, result = process_single_sample(args)
+
+        self.assertEqual(name, "sample1")
+        aligner_cls.return_value.align.assert_not_called()
+        quant_cls.return_value.quantify.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

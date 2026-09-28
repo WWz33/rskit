@@ -1,10 +1,9 @@
 import json
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 from rskit.cli_args import merge_extra_args
-from rskit.core.base import ToolBase, Tool
+from rskit.core.base import ToolBase, Tool, tool_version
 from rskit.config import StarConfig
 from rskit.utils.validators import validate_file, check_star_index
 
@@ -43,11 +42,7 @@ def _file_fingerprint(path) -> Dict[str, object]:
 
 
 def _star_version() -> Optional[str]:
-    try:
-        result = subprocess.run(["STAR", "--version"], capture_output=True, text=True, check=True)
-    except (OSError, subprocess.CalledProcessError):
-        return None
-    return result.stdout.strip() or None
+    return tool_version("STAR")
 
 
 def read_index_fingerprint(index_dir) -> Optional[dict]:
@@ -82,6 +77,20 @@ def index_input_changes(index_dir, genome_fasta, gtf_file) -> Optional[List[str]
         if fingerprint.get(key) != current:
             changed.append(key)
     return changed
+
+
+def alignment_complete(align_prefix: str) -> bool:
+    """True when STAR finished a sample: transcriptome BAM plus final log.
+
+    STAR writes Log.final.out only after a successful run, so a non-empty BAM
+    without it is a crashed run and must not be reused.
+    """
+    transcriptome_bam = Path(f"{align_prefix}Aligned.toTranscriptome.out.bam")
+    final_log = Path(f"{align_prefix}Log.final.out")
+    return (
+        transcriptome_bam.exists() and transcriptome_bam.stat().st_size > 0
+        and final_log.exists() and final_log.stat().st_size > 0
+    )
 
 class StarIndexer:
     def __init__(self, config: StarConfig):

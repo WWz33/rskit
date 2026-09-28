@@ -43,6 +43,14 @@ class CliAliasTests(unittest.TestCase):
         self.assertEqual(args.jobs, 4)
         self.assertTrue(args.merge_sf)
 
+    def test_alpha_and_lfc_are_range_checked(self) -> None:
+        for extra in (["-a", "1.5"], ["-l", "-2"]):
+            argv = ["rskit", "deseq2", "-gc", "counts.csv", "-S", "coldata.csv"] + extra
+            with mock.patch.object(sys, "argv", argv):
+                with self.assertRaises(SystemExit) as ctx:
+                    cli.main()
+            self.assertEqual(ctx.exception.code, 2)
+
     def test_main_reports_user_errors_with_exit_code_1(self) -> None:
         # user-facing failures (bad input, missing tool) exit cleanly instead
         # of dumping a traceback

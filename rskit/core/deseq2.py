@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from typing import Dict, List, Optional
 import pandas as pd
@@ -10,9 +9,11 @@ from rskit.input_contracts import (
     ensure_genes_by_samples,
     load_coldata,
     read_table,
+    require_no_missing_values,
     validate_sample_alignment,
 )
 from rskit.utils.logger import get_logger
+from rskit.utils.manifest import write_manifest
 
 logger = get_logger(__name__)
 
@@ -60,30 +61,6 @@ def _lfc_shrink_coefficient(contrast: List[str], lfc_columns) -> Optional[str]:
         factor,
     )
     return next((name for name in candidates if name in lfc_columns), None)
-
-
-def write_manifest(output_dir: Path, manifest: Dict) -> Path:
-    """Write a JSON run manifest and return its path."""
-    manifest_path = output_dir / "manifest.json"
-    manifest_path.write_text(
-        json.dumps(_json_safe(manifest), indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    return manifest_path
-
-
-def _json_safe(value):
-    if isinstance(value, dict):
-        return {str(key): _json_safe(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, np.integer):
-        return int(value)
-    if isinstance(value, np.floating):
-        return float(value)
-    return value
 
 
 class Deseq2Analyzer:
@@ -177,6 +154,7 @@ class Deseq2Analyzer:
             DataFrame with sample metadata (index=sample names)
         """
         metadata_df = load_coldata(metadata_file, required_columns=required_columns or [])
+        require_no_missing_values(metadata_df, required_columns or [])
         
         self.metadata_df = metadata_df
         self.logger.info(f"Loaded metadata for {metadata_df.shape[0]} samples")

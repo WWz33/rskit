@@ -48,7 +48,7 @@ def process_single_sample(args):
     """Process a single sample: alignment + quantification."""
     sample_name, sample_data, index_dir, transcript_fasta, workdirs, threads, skip_existing, star_args, salmon_args = args
     
-    from rskit.core.star import StarAligner
+    from rskit.core.star import StarAligner, alignment_complete
     from rskit.core.salmon import SalmonQuantifier
     from rskit.config import StarConfig, SalmonConfig
     
@@ -69,10 +69,19 @@ def process_single_sample(args):
         return sample_name, {"quantification": {"quant": str(quant_file)}}
     
     # Run alignment
-    logger.info(f"[{sample_name}] Aligning with {threads} threads...")
     align_prefix = str(sample_bam_dir / f"{sample_name}_")
-    align_results = aligner.align(index_dir, sample_data["fq1"], sample_data["fq2"],
-                                  align_prefix, sample_name=sample_name)
+    if skip_existing and alignment_complete(align_prefix):
+        # re-quantification only: STAR is the expensive half
+        logger.info(f"[{sample_name}] Reusing existing alignment, skipping STAR")
+        align_results = {
+            "bam": f"{align_prefix}Aligned.out.bam",
+            "transcriptome_bam": f"{align_prefix}Aligned.toTranscriptome.out.bam",
+            "log": f"{align_prefix}Log.final.out",
+        }
+    else:
+        logger.info(f"[{sample_name}] Aligning with {threads} threads...")
+        align_results = aligner.align(index_dir, sample_data["fq1"], sample_data["fq2"],
+                                      align_prefix, sample_name=sample_name)
     
     # Run quantification
     logger.info(f"[{sample_name}] Quantifying...")

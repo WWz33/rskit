@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import pandas as pd
 from rskit.config import PipelineConfig
-from rskit.core.star import StarIndexer, StarAligner
+from rskit.core.star import StarIndexer, StarAligner, alignment_complete
 from rskit.core.salmon import SalmonExpressionExporter, SalmonQuantifier
 from rskit.core.deseq2 import Deseq2Analyzer
 from rskit.utils.logger import get_logger
@@ -53,8 +53,17 @@ class RNAseqPipeline:
             sample_output.mkdir(parents=True, exist_ok=True)
 
             align_prefix = str(sample_output / f"{sample_name}_")
-            align_results = self.aligner.align(index_dir, sample_data["fq1"], sample_data["fq2"],
-                                              align_prefix, sample_name=sample_name)
+            if skip_existing and alignment_complete(align_prefix):
+                # re-quantification only: STAR is the expensive half
+                self.logger.info(f"[{sample_name}] Reusing existing alignment, skipping STAR")
+                align_results = {
+                    "bam": f"{align_prefix}Aligned.out.bam",
+                    "transcriptome_bam": f"{align_prefix}Aligned.toTranscriptome.out.bam",
+                    "log": f"{align_prefix}Log.final.out",
+                }
+            else:
+                align_results = self.aligner.align(index_dir, sample_data["fq1"], sample_data["fq2"],
+                                                  align_prefix, sample_name=sample_name)
 
             salmon_output = quant_path / sample_name
             quant_results = self.quantifier.quantify(transcript_fasta, align_results["transcriptome_bam"],

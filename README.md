@@ -188,7 +188,7 @@ Complete pipeline: quantification + DESeq2 analysis.
 | `-ms` | `--merge-sf` | Regenerate gene-level CSV files from this run's `03_quant/*/quant.sf` files. |
 | `-tr` | `--trim` | Run fastp before alignment and use trimmed FASTQ files. |
 | `-fi` | `--force-index` | Rebuild the STAR index even when an index directory already exists. |
-| `-se` | `--skip-existing` | Skip sample-level work when expected output files already exist. |
+| `-se` | `--skip-existing` | Skip sample-level work when expected outputs already exist; completed quant.sf, transcriptome BAM, and clean reads are reused. |
 | n/a | `--star-args` | Advanced STAR arguments. Allowed conflicts replace rskit defaults; protected options include `--runThreadN`, `--genomeDir`, `--readFilesIn`, `--readFilesCommand`, `--outFileNamePrefix`, `--outSAMtype`, `--quantMode`, `--genomeFastaFiles`, and `--sjdbGTFfile`. |
 | n/a | `--salmon-args` | Advanced `salmon quant` arguments. Allowed conflicts replace rskit defaults; protected options include `-t`/`--targets`, `-a`/`--alignments`, `-o`/`--output`, `-p`/`--threads`, and `-l`/`--libType`. |
 | n/a | `--fastp-args` | Advanced fastp arguments used only with `--trim`. Allowed conflicts replace rskit defaults; protected options include `-i`/`--in1`, `-I`/`--in2`, `-o`/`--out1`, `-O`/`--out2`, `-w`/`--thread`, report paths, STDIN/STDOUT, and extra output-file options. |
@@ -219,7 +219,7 @@ Complete quantification pipeline: index -> align -> quant -> gene-level table ex
 | `-ms` | `--merge-sf` | Regenerate gene-level CSV files from this run's `03_quant/*/quant.sf` files. |
 | `-tr` | `--trim` | Run fastp before alignment. |
 | `-fi` | `--force-index` | Rebuild the STAR index even if it exists. |
-| `-se` | `--skip-existing` | Skip sample work when expected output already exists. |
+| `-se` | `--skip-existing` | Skip sample work when expected output already exists; completed quant.sf, transcriptome BAM, and clean reads are reused. |
 | n/a | `--star-args` | Advanced STAR arguments. Allowed conflicts replace rskit defaults; protected options include `--runThreadN`, `--genomeDir`, `--readFilesIn`, `--readFilesCommand`, `--outFileNamePrefix`, `--outSAMtype`, `--quantMode`, `--genomeFastaFiles`, and `--sjdbGTFfile`. |
 | n/a | `--salmon-args` | Advanced `salmon quant` arguments. Allowed conflicts replace rskit defaults; protected options include `-t`/`--targets`, `-a`/`--alignments`, `-o`/`--output`, `-p`/`--threads`, and `-l`/`--libType`. |
 | n/a | `--fastp-args` | Advanced fastp arguments used only with `--trim`. Allowed conflicts replace rskit defaults; protected options include `-i`/`--in1`, `-I`/`--in2`, `-o`/`--out1`, `-O`/`--out2`, `-w`/`--thread`, report paths, STDIN/STDOUT, and extra output-file options. |
@@ -370,8 +370,11 @@ wgcna_obj = analyzer.run_analysis()
 ├── gene_counts.csv
 ├── gene_tpm.csv
 ├── gene_log2_tpm.csv
+├── manifest.json
 └── tx2gene.tsv
 ```
+
+`manifest.json` records the quantification inputs, sample list, resolved parameters, tool versions, and the STAR index fingerprint.
 
 ### Complete pipeline output
 

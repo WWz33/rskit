@@ -35,7 +35,7 @@ def resolve_path_from_table(path_value, table_path: str) -> Path:
     """Resolve a path value relative to the table that contains it."""
     if pd.isna(path_value) or not str(path_value).strip():
         raise ValueError(f"Empty path value in {Path(table_path).name}")
-    path = Path(str(path_value).strip())
+    path = Path(str(path_value).strip()).expanduser()
     if path.is_absolute():
         return path
     return (Path(table_path).resolve().parent / path).resolve()
@@ -105,6 +105,24 @@ def ensure_genes_by_samples(
     oriented = table.T
     validate_sample_alignment(oriented, metadata, table_name=table_name)
     return oriented.loc[metadata.index]
+
+
+def require_no_missing_values(
+    metadata: pd.DataFrame,
+    columns: Sequence[str],
+    table_name: str = "coldata",
+) -> None:
+    """Reject missing values in columns the analysis groups or models by.
+
+    A missing design value would otherwise reach pydeseq2/formulaic late and
+    fail with an opaque error (or stringify into a stray level).
+    """
+    for column in columns:
+        if metadata[column].isna().any():
+            raise ValueError(
+                f"{table_name} column '{column}' contains missing values; "
+                "fill them before continuing"
+            )
 
 
 def validate_sample_alignment(

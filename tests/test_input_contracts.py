@@ -1,6 +1,8 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import pandas as pd
 
@@ -167,6 +169,17 @@ class InputContractGuards(unittest.TestCase):
             resolve_path_from_table(float("nan"), "coldata.csv")
         with self.assertRaisesRegex(ValueError, "Empty path value"):
             resolve_path_from_table("  ", "coldata.csv")
+
+    def test_resolve_path_expands_user_home(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            home = Path(tempdir)
+            (home / "reads").mkdir()
+            (home / "reads" / "r1.fq").write_text("stub", encoding="utf-8")
+
+            with mock.patch.dict(os.environ, {"HOME": str(home)}):
+                resolved = resolve_path_from_table("~/reads/r1.fq", str(home / "coldata.csv"))
+
+        self.assertEqual(resolved, (home / "reads" / "r1.fq").resolve())
 
     def test_load_coldata_rejects_duplicate_samples(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

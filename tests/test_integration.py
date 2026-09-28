@@ -15,7 +15,7 @@ from pathlib import Path
 
 from rskit import cli
 from rskit.config import StarConfig
-from rskit.core.star import StarAligner, StarIndexer, index_input_changes
+from rskit.core.star import StarAligner, StarIndexer, alignment_complete, index_input_changes
 from rskit.utils.validators import check_star_index
 
 # a seeded, non-repetitive genome: a periodic ACGT sequence would make every
@@ -121,6 +121,9 @@ class StarFastpIntegration(unittest.TestCase):
             transcriptome_bam = Path(results["transcriptome_bam"])
             self.assertTrue(transcriptome_bam.exists())
             self.assertTrue(transcriptome_bam.stat().st_size > 0)
+
+            # the real STAR output must satisfy the resume/completeness rule
+            self.assertTrue(alignment_complete(str(root / "02_bam" / "sample1_")))
 
             # reads were cut verbatim from the genome: they must actually map
             unique_mapped = 0

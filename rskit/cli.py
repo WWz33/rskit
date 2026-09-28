@@ -10,14 +10,15 @@ from rskit.input_validation import validate_input_files
 from rskit.templates import write_template
 from rskit.config import StarConfig, SalmonConfig, PipelineConfig, DESeq2Config
 from rskit.core.pipeline import RNAseqPipeline
-from rskit.core.base import Tool, require_tools
+from rskit.core.base import Tool, require_tools, tool_version
 from rskit.core.deseq2 import run_deseq2_cli
 from rskit.core.wgcna import run_wgcna_cli
 from rskit.utils.logger import get_logger
 from rskit.utils.validators import check_and_prepare_index
 from rskit.utils.parallel import calculate_sample_plan, run_samples_parallel
 from rskit.utils.qc_summary import write_qc_summary
-from rskit.core.star import StarIndexer, index_input_changes
+from rskit.core.star import StarIndexer, alignment_complete, index_input_changes, read_index_fingerprint
+from rskit.utils.manifest import write_manifest
 from rskit.core.salmon import SalmonExpressionExporter, merge_salmon_quant_tables
 
 logger = get_logger(__name__)
@@ -46,6 +47,22 @@ FASTP_PROTECTED_OPTIONS = {
     "--merged_out",
     "--overlapped_out",
 }
+
+
+def probability_argument(value: str) -> float:
+    """argparse type for --alpha: a probability strictly between 0 and 1."""
+    parsed = float(value)
+    if not 0.0 < parsed < 1.0:
+        raise argparse.ArgumentTypeError("must be between 0 and 1 (exclusive)")
+    return parsed
+
+
+def non_negative_argument(value: str) -> float:
+    """argparse type for --lfc: a non-negative float."""
+    parsed = float(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be >= 0")
+    return parsed
 
 
 @dataclass
@@ -143,11 +160,11 @@ def trim_sample(sample_name: str, r1_path: Path, r2_path: Path,
                 skip_existing: bool = False) -> Tuple[str, str]:
     """Trim one sample, reusing completed work under --skip-existing.
 
-    A sample whose quant.sf already exists is finished: alignment and
-    quantification will both be skipped, so trimming it again (its clean
-    reads may have been deleted to save space, or predate the gzip layout)
-    would be pure waste. The clean paths are still returned; nothing reads
-    them once quantification is skipped.
+    A sample whose quant.sf already exists is finished; one whose alignment
+    is complete only needs re-quantification. In both cases (and when clean
+    reads already exist) trimming again would be pure waste, so the clean
+    paths are returned without running fastp. They are only read by the
+    alignment step, which is skipped for completed samples.
     """
     r1_clean, r2_clean = trimmed_read_paths(sample_name, workdirs)
     if skip_existing:
@@ -156,6 +173,12 @@ def trim_sample(sample_name: str, r1_path: Path, r2_path: Path,
             quant_file = Path(quant_dir) / sample_name / "quant.sf"
             if quant_file.exists() and quant_file.stat().st_size > 0:
                 logger.info(f"[{sample_name}] Quantification already complete, skipping trimming")
+                return r1_clean, r2_clean
+        bam_dir = workdirs.get('bam')
+        if bam_dir is not None:
+            align_prefix = str(Path(bam_dir) / sample_name / f"{sample_name}_")
+            if alignment_complete(align_prefix):
+                logger.info(f"[{sample_name}] Alignment already complete, skipping trimming")
                 return r1_clean, r2_clean
         if all(
             Path(path).exists() and Path(path).stat().st_size > 0
@@ -342,7 +365,15 @@ def cap_threads_to_available_cpus(threads: Optional[int]) -> Optional[int]:
     return min(threads, available)
 
 
-def run_quant_phase(args, workdirs: Dict[str, Path]) -> Tuple[List, Dict[str, str]]:
+def write_qc_summary_safely(workdirs: Dict[str, Path]) -> None:
+    """Best-effort QC summary; never masks the error that triggered it."""
+    try:
+        write_qc_summary(workdirs)
+    except Exception as e:
+        logger.warning(f"Could not write QC summary: {e}")
+
+
+def run_quant_phase(args, workdirs: Dict[str, Path], command: str = "quant") -> Tuple[List, Dict[str, str]]:
     """Run index -> trim -> align -> quantify -> export -> QC summary.
 
     Shared by ``quant`` and ``all`` so the two entry points cannot drift apart.
@@ -399,27 +430,72 @@ def run_quant_phase(args, workdirs: Dict[str, Path]) -> Tuple[List, Dict[str, st
         fastp_args=fastp_args,
         skip_existing=args.skip_existing,
     )
-    results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
-                                 index_dir, workdirs, sample_plan.threads_per_sample,
-                                 sample_plan.active_jobs, args.skip_existing,
-                                 star_args=star_args, salmon_args=salmon_args)
-    expression_outputs = export_quant_expression_tables(
-        quant_dir=workdirs['quant'],
-        gtf_file=gtf_file,
-        tx2gene=args.tx2gene,
-        sample_names=[sample_name for sample_name, _, _ in samples_list],
-        merge_sf=args.merge_sf,
-    )
+    try:
+        results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
+                                     index_dir, workdirs, sample_plan.threads_per_sample,
+                                     sample_plan.active_jobs, args.skip_existing,
+                                     star_args=star_args, salmon_args=salmon_args)
+        expression_outputs = export_quant_expression_tables(
+            quant_dir=workdirs['quant'],
+            gtf_file=gtf_file,
+            tx2gene=args.tx2gene,
+            sample_names=[sample_name for sample_name, _, _ in samples_list],
+            merge_sf=args.merge_sf,
+        )
+    except Exception:
+        # a run that dies mid-way still deserves QC for the samples that finished
+        write_qc_summary_safely(workdirs)
+        raise
 
     logger.info(f"Quantification completed. Processed {len(results)} samples.")
-    write_qc_summary(workdirs)
+    write_qc_summary_safely(workdirs)
+
+    manifest_path = write_manifest(
+        workdirs['quant'],
+        {
+            "command": command,
+            "inputs": {
+                "coldata": args.coldata,
+                "genome_fasta": genome_fasta,
+                "gtf_file": gtf_file,
+                "transcript_fasta": transcript_fasta,
+                "tx2gene": args.tx2gene,
+            },
+            "samples": [sample_name for sample_name, _, _ in samples_list],
+            "index": {
+                "dir": str(index_dir),
+                "fingerprint": read_index_fingerprint(index_dir),
+            },
+            "options": {
+                "trim": args.trim,
+                "skip_existing": args.skip_existing,
+                "merge_sf": args.merge_sf,
+                "star_args": star_args,
+                "salmon_args": salmon_args,
+                "fastp_args": fastp_args,
+            },
+            "threads": {
+                "total": threads,
+                "requested_jobs": args.jobs,
+                "active_jobs": sample_plan.active_jobs,
+                "threads_per_sample": sample_plan.threads_per_sample,
+            },
+            "tools": {
+                "STAR": tool_version("STAR"),
+                "salmon": tool_version("salmon"),
+                **({"fastp": tool_version("fastp")} if args.trim else {}),
+            },
+            "outputs": expression_outputs,
+        },
+    )
+    logger.info(f"Saved manifest: {manifest_path}")
     return samples_list, expression_outputs
 
 
 def main_quant(args):
     """Run quantification pipeline"""
     workdirs = setup_workdir(args.output_dir)
-    _, expression_outputs = run_quant_phase(args, workdirs)
+    _, expression_outputs = run_quant_phase(args, workdirs, command="quant")
     logger.info(f"Pipeline completed. Results saved to: {args.output_dir}")
     if expression_outputs:
         logger.info(f"Gene-level outputs: {expression_outputs}")
@@ -502,7 +578,7 @@ def main_all(args):
     logger.info("Step 1: Quantification Pipeline")
     logger.info("="*60)
 
-    _, expression_outputs = run_quant_phase(args, workdirs)
+    _, expression_outputs = run_quant_phase(args, workdirs, command="all")
 
     # Step 2: Run DESeq2
     logger.info("="*60)
@@ -609,9 +685,9 @@ Examples:
         help="Design formula (e.g., '~condition', '~batch + condition')")
     parser_deseq2.add_argument("-c", "--contrast",
         help="Contrast specification (e.g., 'condition,treatment,control')")
-    parser_deseq2.add_argument("-a", "--alpha", type=float, default=0.05,
+    parser_deseq2.add_argument("-a", "--alpha", type=probability_argument, default=0.05,
         help="Significance threshold for adjusted p-values")
-    parser_deseq2.add_argument("-l", "--lfc", dest="lfc_threshold", type=float, default=2.0,
+    parser_deseq2.add_argument("-l", "--lfc", dest="lfc_threshold", type=non_negative_argument, default=2.0,
         help="Log2 fold change threshold for significant genes")
     parser_deseq2.add_argument("-F", "--min-count", dest="prefilter_min_count", type=int, default=10,
         help="Minimum total count for DESeq2 gene prefiltering; use 0 to disable")
@@ -750,9 +826,9 @@ Examples:
         help="Design formula (e.g., '~condition', '~batch + condition')")
     parser_all.add_argument("-c", "--contrast",
         help="Contrast specification (e.g., 'condition,treatment,control')")
-    parser_all.add_argument("-a", "--alpha", type=float, default=0.05,
+    parser_all.add_argument("-a", "--alpha", type=probability_argument, default=0.05,
         help="Significance threshold for adjusted p-values")
-    parser_all.add_argument("-l", "--lfc", dest="lfc_threshold", type=float, default=2.0,
+    parser_all.add_argument("-l", "--lfc", dest="lfc_threshold", type=non_negative_argument, default=2.0,
         help="Log2 fold change threshold for significant genes")
     parser_all.add_argument("-F", "--min-count", dest="prefilter_min_count", type=int, default=10,
         help="Minimum total count for DESeq2 gene prefiltering; use 0 to disable")
