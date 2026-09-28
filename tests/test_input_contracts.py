@@ -109,6 +109,29 @@ class InputContractTests(unittest.TestCase):
         # R semantics: ~batch*condition == ~batch + condition + batch:condition
         self.assertEqual(design_columns("~batch*condition"), ["batch", "condition"])
 
+    def test_design_columns_extracts_columns_from_function_calls(self) -> None:
+        # pydeseq2 accepts these formulas; the validator must not invent
+        # columns like "ns(age," and then demand them in coldata
+        self.assertEqual(
+            design_columns("~condition + splines::ns(age, 3)"),
+            ["condition", "age"],
+        )
+        self.assertEqual(design_columns("~ batch + I(log(x))"), ["batch", "x"])
+
+    def test_load_coldata_keeps_numeric_sample_names_as_strings(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            coldata_path = Path(tempdir) / "coldata.csv"
+            coldata_path.write_text("sample,condition\n1,A\n2,B\n", encoding="utf-8")
+
+            metadata = load_coldata(str(coldata_path))
+            # pandas would otherwise infer int64 and .loc lookups against
+            # string-labeled count matrices fail with a bare KeyError
+            self.assertEqual(list(metadata.index), ["1", "2"])
+
+            counts = pd.DataFrame({"1": [10, 20], "2": [30, 40]}, index=["geneA", "geneB"])
+            oriented = ensure_genes_by_samples(counts, metadata, table_name="counts")
+            self.assertEqual(list(oriented.index), ["1", "2"])
+
     def test_ensure_genes_by_samples_transposes_and_reorders(self) -> None:
         table = pd.DataFrame(
             {"s2": [12, 24], "s1": [10, 20]},

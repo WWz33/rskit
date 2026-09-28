@@ -28,19 +28,21 @@ A Python toolkit for RNA-seq analysis with a CLI and Python API for common workf
 ```bash
 git clone https://github.com/WWz33/rskit.git
 cd rskit
-pip install -e .
+pip install -e ".[all]"   # full install; plain `-e .` skips the DESeq2/WGCNA backends
 ```
 
 ### Dependencies
 
 | Dependency | Version |
 |------------|---------|
-| Python | >= 3.8 |
-| pandas | 3.0.3 |
-| numpy | 2.5.0 |
-| pydeseq2 | 0.5.4 |
-| pytximport | 0.13.0 |
-| PyWGCNA | 2.2.1 |
+| Python | >= 3.11 |
+| pandas | >= 3.0 |
+| numpy | >= 2.5 |
+| matplotlib | >= 3.11 |
+| scikit-learn | >= 1.9 |
+| pydeseq2 | >= 0.5 (extra `deseq2`) |
+| pytximport | >= 0.13 (extra `deseq2`) |
+| PyWGCNA | >= 2.2 (extra `wgcna`) |
 | STAR | 2.7.11b |
 | Salmon | 2.2.1 |
 | fastp | 1.3.6 (optional) |
@@ -85,7 +87,7 @@ rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -
 rskit quant -s sample1 -1 sample1_R1.fq.gz -2 sample1_R2.fq.gz -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ -ms
 ```
 
-Default batch quantification uses `-j 1`. `-t/--threads` is the total thread budget, and `-j/--jobs` is the sample concurrency. For example, `-t 100 -j 20` gives each sample 5 threads. Use `-ms/--merge-sf` to regenerate gene-level CSV files from all `03_quant/*/quant.sf` folders.
+Default batch quantification uses `-j 1`. `-t/--threads` is the total thread budget, and `-j/--jobs` is the sample concurrency. For example, `-t 100 -j 20` gives each sample 5 threads. Use `-ms/--merge-sf` to regenerate gene-level CSV files from this run's `03_quant/*/quant.sf` folders.
 
 ### I need to tune STAR, Salmon, or fastp
 
@@ -183,7 +185,7 @@ Complete pipeline: quantification + DESeq2 analysis.
 | `-t2g` | `--tx2gene` | Optional transcript-to-gene mapping file; if omitted, rskit writes `03_quant/tx2gene.tsv` from `--gtf-file`. |
 | `-t` | `--threads` | Total thread budget for sample processing. Default: `8`. |
 | `-j` | `--jobs` | Maximum number of samples to process concurrently. Default: `1`. |
-| `-ms` | `--merge-sf` | Scan all `03_quant/*/quant.sf` files and regenerate gene-level CSV files. |
+| `-ms` | `--merge-sf` | Regenerate gene-level CSV files from this run's `03_quant/*/quant.sf` files. |
 | `-tr` | `--trim` | Run fastp before alignment and use trimmed FASTQ files. |
 | `-fi` | `--force-index` | Rebuild the STAR index even when an index directory already exists. |
 | `-se` | `--skip-existing` | Skip sample-level work when expected output files already exist. |
@@ -214,7 +216,7 @@ Complete quantification pipeline: index -> align -> quant -> gene-level table ex
 | `-t2g` | `--tx2gene` | Optional transcript-to-gene mapping for gene-level export; otherwise generated from `--gtf-file`. |
 | `-t` | `--threads` | Total thread budget for sample processing. Default: `8`. |
 | `-j` | `--jobs` | Maximum number of samples to process concurrently. Default: `1`. |
-| `-ms` | `--merge-sf` | Scan all `03_quant/*/quant.sf` files and regenerate gene-level CSV files. |
+| `-ms` | `--merge-sf` | Regenerate gene-level CSV files from this run's `03_quant/*/quant.sf` files. |
 | `-tr` | `--trim` | Run fastp before alignment. |
 | `-fi` | `--force-index` | Rebuild the STAR index even if it exists. |
 | `-se` | `--skip-existing` | Skip sample work when expected output already exists. |

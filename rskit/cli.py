@@ -228,6 +228,7 @@ def export_quant_expression_tables(
             output_dir=str(quant_dir),
             gtf_file=gtf_file,
             tx2gene=tx2gene,
+            sample_names=sample_names,
         )
     else:
         outputs = SalmonExpressionExporter().export_gene_tables(
@@ -479,7 +480,7 @@ def main():
     parser_quant.add_argument("-t", "--threads", type=int, default=8, help="Total thread budget")
     parser_quant.add_argument("-j", "--jobs", type=int, default=1, help="Maximum number of samples to process concurrently")
     parser_quant.add_argument("-ms", "--merge-sf", action="store_true",
-        help="Merge all 03_quant/*/quant.sf files into gene-level expression tables")
+        help="Merge the current run's 03_quant/*/quant.sf files into gene-level expression tables")
     parser_quant.add_argument("-tr", "--trim", action="store_true", help="Trim reads with fastp")
     parser_quant.add_argument("-fi", "--force-index", action="store_true", help="Force rebuild index")
     parser_quant.add_argument("-se", "--skip-existing", action="store_true", help="Skip samples if output already exists")
@@ -650,7 +651,7 @@ Examples:
     parser_all.add_argument("-j", "--jobs", type=int, default=1,
         help="Maximum number of samples to process concurrently")
     parser_all.add_argument("-ms", "--merge-sf", action="store_true",
-        help="Merge all 03_quant/*/quant.sf files into gene-level expression tables")
+        help="Merge the current run's 03_quant/*/quant.sf files into gene-level expression tables")
     parser_all.add_argument("-tr", "--trim", action="store_true",
         help="Trim reads with fastp")
     parser_all.add_argument("-fi", "--force-index", action="store_true",

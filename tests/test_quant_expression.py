@@ -255,7 +255,9 @@ class QuantExpressionTests(unittest.TestCase):
         )
         merge_salmon_quant_tables.assert_not_called()
 
-    def test_quant_export_scans_all_quant_files_when_merge_sf_requested(self) -> None:
+    def test_quant_merge_sf_merges_only_current_samples(self) -> None:
+        # stale sample directories left in 03_quant by older runs must not leak
+        # into the merged tables, so the export forwards the current sample list
         with mock.patch("rskit.cli.merge_salmon_quant_tables", return_value={}) as merge_salmon_quant_tables, \
              mock.patch("rskit.cli.SalmonExpressionExporter.export_gene_tables") as export_gene_tables:
             cli.export_quant_expression_tables(
@@ -271,6 +273,7 @@ class QuantExpressionTests(unittest.TestCase):
             output_dir=str(self.root / "03_quant"),
             gtf_file=str(self.root / "annotation.gtf"),
             tx2gene=None,
+            sample_names=["sample1"],
         )
         export_gene_tables.assert_not_called()
 

@@ -8,13 +8,24 @@ version = "0.2.0"
 description = "Python interface for RNA-seq analysis tools"
 requires-python = ">=3.11"
 dependencies = [
-    "pandas==3.0.3",
-    "numpy==2.5.0",
-    "pydeseq2==0.5.4",
-    "pytximport==0.13.0",
-    "PyWGCNA==2.2.1",
-    "matplotlib==3.11.1",
-    "scikit-learn==1.9.0",
+    "pandas>=3.0,<4",
+    "numpy>=2.5,<3",
+    "matplotlib>=3.11,<4",
+    "scikit-learn>=1.9,<2",
+]
+
+# Analysis backends are imported lazily so a minimal install can still run
+# the alignment/quantification phase; extras pull them in on demand.
+[project.optional-dependencies]
+deseq2 = [
+    "pydeseq2>=0.5,<0.6",
+    "pytximport>=0.13,<0.14",
+]
+wgcna = [
+    "PyWGCNA>=2.2,<3",
+]
+all = [
+    "rskit[deseq2,wgcna]",
 ]
 
 [project.scripts]

@@ -403,13 +403,17 @@ class Deseq2Analyzer:
         
         try:
             import matplotlib.pyplot as plt
-            
+
+            # DESeq2 can emit pvalue == 0.0 for extreme effects; -log10(0) = inf
+            # breaks the axis and the whole plot is lost to the broad except below
+            min_p = np.finfo(float).tiny
+
             # Create volcano plot
             fig, ax = plt.subplots(figsize=(10, 8))
             
             # Plot non-significant genes
             non_sig = self.stats_results[self.stats_results['padj'] >= self.config.alpha]
-            ax.scatter(non_sig['log2FoldChange'], -np.log10(non_sig['pvalue']),
+            ax.scatter(non_sig['log2FoldChange'], -np.log10(non_sig['pvalue'].clip(lower=min_p)),
                       alpha=0.5, label='Non-significant', color='gray', s=10)
 
             # Plot significant up-regulated genes (same criteria as save_results)
@@ -417,7 +421,7 @@ class Deseq2Analyzer:
                 (self.stats_results['padj'] < self.config.alpha) &
                 (self.stats_results['log2FoldChange'] > self.config.lfc_threshold)
             ]
-            ax.scatter(sig_up['log2FoldChange'], -np.log10(sig_up['pvalue']),
+            ax.scatter(sig_up['log2FoldChange'], -np.log10(sig_up['pvalue'].clip(lower=min_p)),
                       alpha=0.7, label='Up-regulated', color='red', s=20)
 
             # Plot significant down-regulated genes
@@ -425,7 +429,7 @@ class Deseq2Analyzer:
                 (self.stats_results['padj'] < self.config.alpha) &
                 (self.stats_results['log2FoldChange'] < -self.config.lfc_threshold)
             ]
-            ax.scatter(sig_down['log2FoldChange'], -np.log10(sig_down['pvalue']),
+            ax.scatter(sig_down['log2FoldChange'], -np.log10(sig_down['pvalue'].clip(lower=min_p)),
                       alpha=0.7, label='Down-regulated', color='blue', s=20)
 
             # Add labels and title
@@ -668,6 +672,7 @@ def run_deseq2_cli(args):
                 "salmon_dir": args.salmon_dir,
                 "gtf": args.gtf,
                 "tx2gene": args.tx2gene,
+                "counts_source": "salmon_dir" if args.salmon_dir else "gene_counts",
                 "counts_file": counts_file,
             },
             "samples": list(metadata_df.index),

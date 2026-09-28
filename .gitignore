@@ -12,6 +12,7 @@ data/coldata.csv
 data/*.pdf
 logs/*
 *.log
+test.sh
 
 # Agent/workflow state
 .ccg/

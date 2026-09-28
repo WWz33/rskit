@@ -28,22 +28,24 @@ rskit 是一个用于 RNA-seq 分析的 Python 工具包，提供 CLI 和 Python
 ```bash
 git clone https://github.com/WWz33/rskit.git
 cd rskit
-pip install -e .
+pip install -e ".[all]"   # 完整安装；裸 `-e .` 不含 DESeq2/WGCNA 后端
 ```
 
 ### 依赖
 
 | 依赖 | 版本 |
 |------|------|
-| Python | >= 3.8 |
-| pandas | 3.0.3 |
-| numpy | 2.5.0 |
-| pydeseq2 | 0.5.4 |
-| pytximport | 0.13.0 |
-| PyWGCNA | 2.2.1 |
+| Python | >= 3.11 |
+| pandas | >= 3.0 |
+| numpy | >= 2.5 |
+| matplotlib | >= 3.11 |
+| scikit-learn | >= 1.9 |
+| pydeseq2 | >= 0.5（`deseq2` extra） |
+| pytximport | >= 0.13（`deseq2` extra） |
+| PyWGCNA | >= 2.2（`wgcna` extra） |
 | STAR | 2.7.11b |
 | Salmon | 2.2.1 |
-| fastp | 1.3.6 (optional) |
+| fastp | 1.3.6（可选） |
 
 ## 用户场景
 
@@ -85,7 +87,7 @@ rskit quant -S coldata.csv -g genome.fa -gtf annotation.gtf -gf transcripts.fa -
 rskit quant -s sample1 -1 sample1_R1.fq.gz -2 sample1_R2.fq.gz -g genome.fa -gtf annotation.gtf -gf transcripts.fa -o results/ -ms
 ```
 
-默认批量定量为 `-j 1`。`-t/--threads` 是总线程数，`-j/--jobs` 是并发样本数；例如 `-t 100 -j 20` 为每个样本分配 5 线程。使用 `-ms/--merge-sf` 时，会从所有 `03_quant/*/quant.sf` 重新生成基因级 CSV。
+默认批量定量为 `-j 1`。`-t/--threads` 是总线程数，`-j/--jobs` 是并发样本数；例如 `-t 100 -j 20` 为每个样本分配 5 线程。使用 `-ms/--merge-sf` 时，从本次运行的 `03_quant/*/quant.sf` 重新生成基因级 CSV。
 
 ### 我需要调整 STAR、Salmon 或 fastp 参数
 
@@ -183,7 +185,7 @@ geneB,0.00,1.00,2.32,2.58
 | `-t2g` | `--tx2gene` | 可选 transcript-to-gene mapping；未提供时从 `--gtf-file` 写出 `03_quant/tx2gene.tsv`。 |
 | `-t` | `--threads` | 样本处理使用的总线程预算。默认：`8`。 |
 | `-j` | `--jobs` | 同时处理的最大样本数。默认：`1`。 |
-| `-ms` | `--merge-sf` | 扫描所有 `03_quant/*/quant.sf` 并重新生成基因级 CSV。 |
+| `-ms` | `--merge-sf` | 从本次运行的 `03_quant/*/quant.sf` 重新生成基因级 CSV。 |
 | `-tr` | `--trim` | alignment 前运行 fastp，并使用修剪后的 FASTQ。 |
 | `-fi` | `--force-index` | 即使 index 目录已存在，也强制重建 STAR index。 |
 | `-se` | `--skip-existing` | 目标输出已存在时跳过对应样本任务。 |
@@ -214,7 +216,7 @@ geneB,0.00,1.00,2.32,2.58
 | `-t2g` | `--tx2gene` | 可选 transcript-to-gene mapping，用于基因级导出；未提供时从 `--gtf-file` 生成。 |
 | `-t` | `--threads` | 样本处理使用的总线程预算。默认：`8`。 |
 | `-j` | `--jobs` | 同时处理的最大样本数。默认：`1`。 |
-| `-ms` | `--merge-sf` | 扫描所有 `03_quant/*/quant.sf` 并重新生成基因级 CSV。 |
+| `-ms` | `--merge-sf` | 从本次运行的 `03_quant/*/quant.sf` 重新生成基因级 CSV。 |
 | `-tr` | `--trim` | alignment 前运行 fastp。 |
 | `-fi` | `--force-index` | 即使 STAR index 已存在也强制重建。 |
 | `-se` | `--skip-existing` | 目标输出已存在时跳过样本任务。 |

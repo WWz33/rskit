@@ -339,12 +339,17 @@ def merge_salmon_quant_tables(
     output_dir: str,
     gtf_file: Optional[str] = None,
     tx2gene: Optional[str] = None,
+    sample_names: Optional[Sequence[str]] = None,
 ) -> Dict[str, str]:
-    """Merge all Salmon quant.sf files under a directory into gene-level tables."""
+    """Merge Salmon quant.sf files under a directory into gene-level tables.
+
+    sample_names restricts the merge to those samples; None merges every
+    quant.sf found (which picks up stale sample directories from older runs).
+    """
     return SalmonExpressionExporter().export_gene_tables(
         salmon_dir=salmon_dir,
         output_dir=output_dir,
         gtf_file=gtf_file,
         tx2gene=tx2gene,
-        sample_names=None,
+        sample_names=sample_names,
     )

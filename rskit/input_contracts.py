@@ -47,6 +47,10 @@ def load_coldata(path: str, required_columns: Sequence[str] = ()) -> pd.DataFram
     if "sample" not in metadata.columns:
         raise ValueError("Coldata file must contain a 'sample' column")
 
+    # pandas infers purely numeric sample names ("1", "2") as int64, which then
+    # breaks .loc lookups against string sample IDs downstream; keep them strings
+    metadata["sample"] = metadata["sample"].astype(str).str.strip()
+
     duplicated = metadata.loc[metadata["sample"].duplicated(), "sample"].astype(str).unique()
     if len(duplicated):
         raise ValueError("Duplicate sample names in coldata: " + ", ".join(sorted(duplicated)))
@@ -125,20 +129,31 @@ def validate_sample_alignment(
         raise ValueError("Sample IDs do not match (" + "; ".join(problems) + ")")
 
 
+_FORMULA_IDENTIFIER = re.compile(r"[A-Za-z_.][A-Za-z0-9._]*")
+
+
 def design_columns(design: str) -> List[str]:
-    """Extract metadata column names from a simple DESeq2 design formula."""
+    """Extract metadata column names from a DESeq2 design formula.
+
+    Handles the operators users actually write (+, *, :) and pulls the
+    column arguments out of function calls like ``splines::ns(age, 3)``
+    by skipping package prefixes and function names.
+    """
     expression = design.strip()
     if expression.startswith("~"):
         expression = expression[1:]
 
     columns: List[str] = []
-    # 'a*b' expands to a + b + a:b in R; every member column is required
-    for term in expression.replace("+", " ").replace("*", " ").split():
-        # interaction terms (condition:batch) require every involved column
-        for column in term.split(":"):
-            column = column.strip()
-            if column and column != "1" and column not in columns:
-                columns.append(column)
+    for match in _FORMULA_IDENTIFIER.finditer(expression):
+        token = match.group(0)
+        after = expression[match.end():]
+        if after.startswith("::") or after.startswith("("):
+            # package prefix (splines::ns) or function name (ns(...)); not a column
+            continue
+        if token in ("1", "."):
+            continue
+        if token not in columns:
+            columns.append(token)
     return columns
 
 

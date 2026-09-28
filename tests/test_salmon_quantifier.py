@@ -230,5 +230,32 @@ class SalmonQuantifierTests(unittest.TestCase):
             self.assertEqual(found, counts_file)
 
 
+    def test_merge_forwards_sample_names_to_exclude_stale_dirs(self) -> None:
+        from unittest import mock
+
+        from rskit.core.salmon import merge_salmon_quant_tables
+
+        with mock.patch.object(
+            SalmonExpressionExporter, "export_gene_tables", return_value={}
+        ) as export:
+            merge_salmon_quant_tables(
+                salmon_dir="quant", output_dir="quant", sample_names=["s1", "s2"]
+            )
+
+        self.assertEqual(export.call_args.kwargs["sample_names"], ["s1", "s2"])
+
+    def test_merge_defaults_to_all_samples_when_no_names_given(self) -> None:
+        from unittest import mock
+
+        from rskit.core.salmon import merge_salmon_quant_tables
+
+        with mock.patch.object(
+            SalmonExpressionExporter, "export_gene_tables", return_value={}
+        ) as export:
+            merge_salmon_quant_tables(salmon_dir="quant", output_dir="quant")
+
+        self.assertIsNone(export.call_args.kwargs["sample_names"])
+
+
 if __name__ == "__main__":
     unittest.main()
