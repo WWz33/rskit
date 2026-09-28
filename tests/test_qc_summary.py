@@ -40,6 +40,10 @@ class QcSummaryTests(unittest.TestCase):
             (q1 / "aux_info" / "meta_info.json").write_text(
                 json.dumps({"num_processed": 7000, "num_mapped": 6900}), encoding="utf-8"
             )
+            (q1 / "lib_format_counts.json").write_text(
+                json.dumps({"expected_format": "ISF", "library_types": {"ISF": 6900}}),
+                encoding="utf-8",
+            )
             # sample2: quant only (no trimming) -> still a row, salmon metrics only
             q2 = workdirs["quant"] / "sample2"
             (q2 / "aux_info").mkdir(parents=True)
@@ -62,6 +66,8 @@ class QcSummaryTests(unittest.TestCase):
         row2 = table[table["sample"] == "sample2"].iloc[0]
         self.assertEqual(int(row2["salmon_mapped_reads"]), 4000)
         self.assertTrue(pd.isna(row2["input_reads"]))
+        self.assertEqual(row["salmon_expected_format"], "ISF")
+        self.assertTrue(pd.isna(row2["salmon_expected_format"]))
 
     def test_write_qc_summary_returns_none_without_samples(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:

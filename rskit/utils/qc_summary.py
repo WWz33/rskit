@@ -3,7 +3,8 @@
 Collects fastp json, STAR Log.final.out and salmon meta_info.json for each
 sample and writes 00_summary/summary.csv plus a human-readable copy, so a
 finished run has a single place to check trimming, alignment and mapping
-rates without walking per-sample directories.
+rates (and Salmon's detected library type) without walking per-sample
+directories.
 """
 
 import json
@@ -26,6 +27,7 @@ SUMMARY_COLUMNS = [
     "star_multimapped",
     "salmon_mapped_reads",
     "salmon_mapping_rate",
+    "salmon_expected_format",
 ]
 
 
@@ -79,6 +81,20 @@ def _salmon_metrics(meta_path: Path) -> Dict[str, object]:
     }
 
 
+def _salmon_lib_format(path: Path) -> Dict[str, object]:
+    """Salmon's detected library type (e.g. ISF) from lib_format_counts.json.
+
+    Surfacing it per sample catches strandedness/protocol mismatches right
+    after quantification instead of at the DESeq2 stage.
+    """
+    try:
+        info = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    expected = info.get("expected_format")
+    return {"salmon_expected_format": expected} if expected else {}
+
+
 def write_qc_summary(workdirs: Dict[str, Path]) -> Optional[Path]:
     """Write 00_summary/summary.csv from per-sample QC files. Returns its path."""
     rows = []
@@ -94,6 +110,9 @@ def write_qc_summary(workdirs: Dict[str, Path]) -> Optional[Path]:
         salmon_meta = sample_dir / "aux_info" / "meta_info.json"
         if salmon_meta.exists():
             row.update(_salmon_metrics(salmon_meta))
+        lib_format = sample_dir / "lib_format_counts.json"
+        if lib_format.exists():
+            row.update(_salmon_lib_format(lib_format))
         rows.append(row)
 
     if not rows:
