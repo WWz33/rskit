@@ -88,6 +88,12 @@ def setup_workdir(output_dir: str) -> Dict[str, Path]:
     return dirs
 
 
+def trimmed_read_paths(sample: str, workdirs: Dict[str, Path]) -> Tuple[str, str]:
+    """Expected fastp output paths for a sample (gzip keeps resume runs small)."""
+    prefix = workdirs['clean_data'] / sample
+    return str(prefix) + '_1.fq.gz', str(prefix) + '_2.fq.gz'
+
+
 def trim_reads(
     read1: Path,
     read2: Path,
@@ -97,13 +103,13 @@ def trim_reads(
     fastp_args: str = "",
 ) -> Tuple[str, str]:
     """Run fastp trimming"""
-    prefix = workdirs['clean_data'] / sample
+    r1_clean, r2_clean = trimmed_read_paths(sample, workdirs)
     cmd = [
         'fastp',
         '-i', str(read1),
         '-I', str(read2),
-        '-o', str(prefix) + '_1.fq',
-        '-O', str(prefix) + '_2.fq',
+        '-o', r1_clean,
+        '-O', r2_clean,
         '--thread', str(threads),
         '-j', str(workdirs['clean_data_json'] / sample) + '.json',
         '-h', str(workdirs['clean_data_html'] / sample) + '.html'
@@ -112,7 +118,7 @@ def trim_reads(
     logger.info(f"[{sample}] Trimming...")
     Tool("fastp")._run_command(cmd)
     logger.info(f"[{sample}] Trimming completed")
-    return str(prefix) + '_1.fq', str(prefix) + '_2.fq'
+    return r1_clean, r2_clean
 
 
 def parse_samples_from_coldata(coldata: str):
@@ -132,28 +138,47 @@ def parse_samples_from_coldata(coldata: str):
     return samples
 
 
+def trim_sample(sample_name: str, r1_path: Path, r2_path: Path,
+                workdirs: Dict[str, Path], threads: int, fastp_args: str,
+                skip_existing: bool = False) -> Tuple[str, str]:
+    """Trim one sample, reusing completed clean reads under --skip-existing."""
+    r1_clean, r2_clean = trimmed_read_paths(sample_name, workdirs)
+    if skip_existing and all(
+        Path(path).exists() and Path(path).stat().st_size > 0
+        for path in (r1_clean, r2_clean)
+    ):
+        logger.info(f"[{sample_name}] Trimmed reads already exist, skipping")
+        return r1_clean, r2_clean
+    return trim_reads(r1_path, r2_path, sample_name, workdirs, threads, fastp_args)
+
+
 def trim_sample_wrapper(args):
     """Wrapper for parallel trimming"""
-    sample_name, r1_path, r2_path, workdirs, threads, fastp_args = args
-    r1_clean, r2_clean = trim_reads(r1_path, r2_path, sample_name, workdirs, threads, fastp_args)
+    sample_name, r1_path, r2_path, workdirs, threads, fastp_args, skip_existing = args
+    r1_clean, r2_clean = trim_sample(
+        sample_name, r1_path, r2_path, workdirs, threads, fastp_args, skip_existing
+    )
     return sample_name, r1_clean, r2_clean
 
 
-def prepare_samples(samples_list, workdirs: Dict[str, Path], 
+def prepare_samples(samples_list, workdirs: Dict[str, Path],
                     trim: bool, threads: int, jobs: int = 1,
-                    fastp_args: str = "") -> Dict[str, Dict]:
+                    fastp_args: str = "", skip_existing: bool = False) -> Dict[str, Dict]:
     """Prepare samples dict with optional trimming"""
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    
+
     if trim:
         if jobs > 1 and len(samples_list) > 1:
             # Parallel trimming
             num_samples = len(samples_list)
             max_workers = min(jobs, num_samples)
             logger.info(f"Parallel trimming: {num_samples} samples, {max_workers} active jobs")
-            
-            trim_args = [(name, r1, r2, workdirs, threads, fastp_args) for name, r1, r2 in samples_list]
-            
+
+            trim_args = [
+                (name, r1, r2, workdirs, threads, fastp_args, skip_existing)
+                for name, r1, r2 in samples_list
+            ]
+
             samples = {}
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {executor.submit(trim_sample_wrapper, args): args[0] for args in trim_args}
@@ -165,11 +190,13 @@ def prepare_samples(samples_list, workdirs: Dict[str, Path],
             # Sequential trimming
             samples = {}
             for sample_name, r1_path, r2_path in samples_list:
-                r1_clean, r2_clean = trim_reads(r1_path, r2_path, sample_name, workdirs, threads, fastp_args)
+                r1_clean, r2_clean = trim_sample(
+                    sample_name, r1_path, r2_path, workdirs, threads, fastp_args, skip_existing
+                )
                 samples[sample_name] = {'fq1': r1_clean, 'fq2': r2_clean}
     else:
         samples = {name: {'fq1': str(r1), 'fq2': str(r2)} for name, r1, r2 in samples_list}
-    
+
     return samples
 
 
@@ -316,6 +343,7 @@ def run_quant_phase(args, workdirs: Dict[str, Path]) -> Tuple[List, Dict[str, st
         sample_plan.threads_per_sample,
         jobs=sample_plan.active_jobs,
         fastp_args=fastp_args,
+        skip_existing=args.skip_existing,
     )
     results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
                                  index_dir, workdirs, sample_plan.threads_per_sample,

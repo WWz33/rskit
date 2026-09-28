@@ -37,6 +37,35 @@ class FastpArgsTests(unittest.TestCase):
         self.assertEqual(command[command.index("--length_required") + 1], "30")
         self.assertIn("--cut_front", command)
 
+    def test_trim_reads_writes_gzip_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            read1 = root / "sample_R1.fq.gz"
+            read2 = root / "sample_R2.fq.gz"
+            read1.write_text("stub", encoding="utf-8")
+            read2.write_text("stub", encoding="utf-8")
+            workdirs = {
+                "clean_data": root / "clean",
+                "clean_data_json": root / "clean" / "json",
+                "clean_data_html": root / "clean" / "html",
+            }
+            for path in workdirs.values():
+                path.mkdir(parents=True, exist_ok=True)
+
+            with mock.patch("subprocess.run") as run_command:
+                r1_clean, r2_clean = trim_reads(
+                    read1=read1,
+                    read2=read2,
+                    sample="sample1",
+                    workdirs=workdirs,
+                )
+
+        self.assertTrue(r1_clean.endswith("_1.fq.gz"))
+        self.assertTrue(r2_clean.endswith("_2.fq.gz"))
+        command = run_command.call_args.args[0]
+        self.assertEqual(command[command.index("-o") + 1], r1_clean)
+        self.assertEqual(command[command.index("-O") + 1], r2_clean)
+
     def test_fastp_args_reject_protected_options(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)

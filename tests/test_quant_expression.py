@@ -258,6 +258,65 @@ class QuantExpressionTests(unittest.TestCase):
             {"transcript_id": "tx2", "gene_id": "geneB"},
         ])
 
+    def test_prepare_samples_skips_trim_when_clean_reads_exist(self) -> None:
+        clean = self.root / "01_clean_data"
+        clean.mkdir(parents=True)
+        (clean / "sample1_1.fq.gz").write_text("stub", encoding="utf-8")
+        (clean / "sample1_2.fq.gz").write_text("stub", encoding="utf-8")
+        workdirs = {"clean_data": clean}
+
+        with mock.patch("rskit.cli.trim_reads") as trim_reads_mock:
+            samples = cli.prepare_samples(
+                [("sample1", "r1.fq.gz", "r2.fq.gz")],
+                workdirs,
+                trim=True,
+                threads=2,
+                skip_existing=True,
+            )
+
+        trim_reads_mock.assert_not_called()
+        self.assertEqual(samples["sample1"]["fq1"], str(clean / "sample1_1.fq.gz"))
+
+    def test_prepare_samples_retrims_without_skip_existing(self) -> None:
+        clean = self.root / "01_clean_data"
+        clean.mkdir(parents=True)
+        (clean / "sample1_1.fq.gz").write_text("stub", encoding="utf-8")
+        (clean / "sample1_2.fq.gz").write_text("stub", encoding="utf-8")
+        workdirs = {"clean_data": clean}
+
+        with mock.patch(
+            "rskit.cli.trim_reads", return_value=("a_1.fq.gz", "a_2.fq.gz")
+        ) as trim_reads_mock:
+            cli.prepare_samples(
+                [("sample1", "r1.fq.gz", "r2.fq.gz")],
+                workdirs,
+                trim=True,
+                threads=2,
+            )
+
+        trim_reads_mock.assert_called_once()
+
+    def test_prepare_samples_retrims_truncated_clean_reads(self) -> None:
+        # a crashed fastp can leave an empty file; it must not count as done
+        clean = self.root / "01_clean_data"
+        clean.mkdir(parents=True)
+        (clean / "sample1_1.fq.gz").write_text("", encoding="utf-8")
+        (clean / "sample1_2.fq.gz").write_text("stub", encoding="utf-8")
+        workdirs = {"clean_data": clean}
+
+        with mock.patch(
+            "rskit.cli.trim_reads", return_value=("a_1.fq.gz", "a_2.fq.gz")
+        ) as trim_reads_mock:
+            cli.prepare_samples(
+                [("sample1", "r1.fq.gz", "r2.fq.gz")],
+                workdirs,
+                trim=True,
+                threads=2,
+                skip_existing=True,
+            )
+
+        trim_reads_mock.assert_called_once()
+
     def test_quant_export_uses_current_command_samples_by_default(self) -> None:
         with mock.patch("rskit.cli.SalmonExpressionExporter.export_gene_tables", return_value={}) as export_gene_tables, \
              mock.patch("rskit.cli.merge_salmon_quant_tables") as merge_salmon_quant_tables:
