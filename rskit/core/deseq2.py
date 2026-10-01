@@ -47,6 +47,29 @@ def parse_contrast(contrast_value: Optional[str], metadata_df: pd.DataFrame) -> 
     return contrast
 
 
+def parse_contrasts(contrast_values, metadata_df: pd.DataFrame) -> Optional[List[List[str]]]:
+    """Parse and validate one or more DESeq2 contrasts against sample metadata.
+
+    Accepts a single string or a sequence of strings (the CLI passes one entry
+    per -c). Duplicates are rejected: they would produce colliding outputs for
+    no benefit.
+    """
+    if not contrast_values:
+        return None
+    if isinstance(contrast_values, str):
+        contrast_values = [contrast_values]
+
+    contrasts: List[List[str]] = []
+    for value in contrast_values:
+        contrast = parse_contrast(value, metadata_df)
+        if contrast is None:
+            raise ValueError("Contrast must be in format: factor,level1,level2 (e.g., condition,B,A)")
+        if contrast in contrasts:
+            raise ValueError("Duplicate contrast: " + ",".join(contrast))
+        contrasts.append(contrast)
+    return contrasts
+
+
 def _lfc_shrink_coefficient(contrast: List[str], lfc_columns) -> Optional[str]:
     """Resolve the pydeseq2 LFC coefficient column for a (factor, tested, reference) contrast.
 
@@ -69,6 +92,7 @@ class Deseq2Analyzer:
         self.logger = logger
         self.expression_exporter = SalmonExpressionExporter()
         self.dds = None
+        self.inference = None
         self.stats_results = None
         self.stat_res = None
         self.contrast = None
@@ -163,55 +187,55 @@ class Deseq2Analyzer:
         
         return metadata_df
     
-    def analyze(self, counts_df: Optional[pd.DataFrame] = None, 
-                metadata_df: Optional[pd.DataFrame] = None,
-                contrast: Optional[List[str]] = None) -> pd.DataFrame:
-        """Perform differential expression analysis using PyDESeq2.
-        
+    def fit(self, counts_df: Optional[pd.DataFrame] = None,
+            metadata_df: Optional[pd.DataFrame] = None,
+            contrast_factors: Optional[List[str]] = None) -> None:
+        """Build and fit the DESeq2 model once.
+
+        ``contrast_results()`` can then run any number of contrasts against
+        this single fit, which is the expensive part of the analysis.
+
         Args:
             counts_df: Count matrix (samples x genes), or use self.counts_df
             metadata_df: Sample metadata, or use self.metadata_df
-            contrast: Contrast specification ['condition', 'B', 'A']
-            
-        Returns:
-            DataFrame with differential expression results
+            contrast_factors: metadata columns that will be contrasted later;
+                coerced to strings so formulaic treats them as categorical
         """
         try:
             from pydeseq2.dds import DeseqDataSet
-            from pydeseq2.ds import DeseqStats
             from pydeseq2.default_inference import DefaultInference
         except ImportError:
             raise ImportError("PyDESeq2 is not installed. Please install it with: pip install pydeseq2")
-        
+
         # Use provided data or stored data
         if counts_df is not None:
             self.counts_df = counts_df
         if metadata_df is not None:
             self.metadata_df = metadata_df
-            
+
         if self.counts_df is None:
             raise ValueError("No counts data provided. Load counts first.")
         if self.metadata_df is None:
             raise ValueError("No metadata provided. Load metadata first.")
 
-        # Contrasts compare factor levels, so the contrast factor must be
+        # Contrasts compare factor levels, so every contrasted factor must be
         # categorical; numeric coldata columns (condition = 0/1) fail inside
-        # formulaic otherwise. Coerce to string before building the design.
-        factor = contrast[0] if contrast else "condition"
-        if factor in self.metadata_df.columns and self.metadata_df[factor].map(
-            lambda value: not isinstance(value, str)
-        ).any():
-            self.logger.info(f"Coercing coldata column '{factor}' to string for contrast levels")
-            self.metadata_df[factor] = self.metadata_df[factor].astype(str)
+        # formulaic otherwise. Coerce before the design matrix is built.
+        for factor in contrast_factors or ["condition"]:
+            if factor in self.metadata_df.columns and self.metadata_df[factor].map(
+                lambda value: not isinstance(value, str)
+            ).any():
+                self.logger.info(f"Coercing coldata column '{factor}' to string for contrast levels")
+                self.metadata_df[factor] = self.metadata_df[factor].astype(str)
 
         # Ensure sample names match
         validate_sample_alignment(self.counts_df, self.metadata_df, table_name="counts matrix")
         self.counts_df = self.counts_df.loc[self.metadata_df.index]
         self.counts_df = self.prefilter_counts(self.counts_df)
-        
+
         # Initialize inference
-        inference = DefaultInference(n_cpus=self.config.n_cpus)
-        
+        self.inference = DefaultInference(n_cpus=self.config.n_cpus)
+
         # Create DeseqDataSet
         self.logger.info("Creating DeseqDataSet...")
         self.dds = DeseqDataSet(
@@ -222,18 +246,36 @@ class Deseq2Analyzer:
             size_factors_fit_type=self.config.size_factors_fit_type,
             refit_cooks=self.config.refit_cooks,
             min_replicates=self.config.min_replicates,
-            inference=inference,
+            inference=self.inference,
             quiet=self.config.quiet
         )
-        
+
         # Run DESeq2 pipeline
         self.logger.info("Running DESeq2 pipeline...")
         self.dds.deseq2()
-        
+
+    def contrast_results(self, contrast: Optional[List[str]] = None) -> pd.DataFrame:
+        """Run one contrast (Wald test + LFC shrinkage) on the fitted model.
+
+        Args:
+            contrast: Contrast specification ['condition', 'B', 'A']; inferred
+                from the design when omitted
+
+        Returns:
+            DataFrame with differential expression results for this contrast
+        """
+        try:
+            from pydeseq2.ds import DeseqStats
+        except ImportError:
+            raise ImportError("PyDESeq2 is not installed. Please install it with: pip install pydeseq2")
+
+        if self.dds is None:
+            raise ValueError("No fitted model. Call fit() first.")
+
         # Set default contrast if not provided
         if contrast is None:
             contrast = self._infer_contrast()
-        
+
         # Create stats object
         self.logger.info(f"Running statistical analysis with contrast: {contrast}")
         stat_res = DeseqStats(
@@ -244,13 +286,13 @@ class Deseq2Analyzer:
             independent_filter=self.config.independent_filter,
             lfc_null=self.config.lfc_null,
             alt_hypothesis=self.config.alt_hypothesis,
-            inference=inference,
+            inference=self.inference,
             quiet=self.config.quiet
         )
-        
+
         # Run Wald test
         stat_res.summary()
-        
+
         # Store results
         self.stat_res = stat_res
         self.contrast = contrast
@@ -271,6 +313,30 @@ class Deseq2Analyzer:
             self.logger.warning(f"Could not apply LFC shrinkage: {e}")
 
         return self.stats_results
+
+    def analyze(self, counts_df: Optional[pd.DataFrame] = None,
+                metadata_df: Optional[pd.DataFrame] = None,
+                contrast: Optional[List[str]] = None) -> pd.DataFrame:
+        """Fit the model and run a single contrast.
+
+        Convenience wrapper around fit()/contrast_results() kept for API
+        callers; multiple contrasts should call those two directly so the fit
+        is shared.
+
+        Args:
+            counts_df: Count matrix (samples x genes), or use self.counts_df
+            metadata_df: Sample metadata, or use self.metadata_df
+            contrast: Contrast specification ['condition', 'B', 'A']
+
+        Returns:
+            DataFrame with differential expression results
+        """
+        self.fit(
+            counts_df,
+            metadata_df,
+            contrast_factors=[contrast[0]] if contrast else ["condition"],
+        )
+        return self.contrast_results(contrast)
     
     def _infer_contrast(self) -> List[str]:
         """Infer contrast from design matrix and metadata.
@@ -583,7 +649,7 @@ def run_deseq2_cli(args):
     # Load metadata (coldata)
     logger.info(f"Loading metadata from {args.coldata}")
     metadata_df = analyzer.load_metadata(args.coldata, required_columns=design_columns(args.design))
-    contrast = parse_contrast(args.contrast, metadata_df)
+    contrasts = parse_contrasts(args.contrast, metadata_df)
     
     # Load counts
     if args.salmon_dir:
@@ -614,66 +680,105 @@ def run_deseq2_cli(args):
         raise ValueError("Either --salmon-dir or --gene-counts must be provided")
 
     counts_df = analyzer.load_counts_from_file(counts_file, metadata_df=metadata_df)
-    
-    # Run analysis
+
+    # Fit the model once; every contrast reuses this fit (the expensive step)
     logger.info("Running DESeq2 analysis...")
-    results = analyzer.analyze(contrast=contrast)
-    
-    # Save results
-    saved_files = analyzer.save_results(str(output_dir))
-    logger.info(f"Saved results: {saved_files}")
-    
-    # Generate plots
-    logger.info("Generating plots...")
-
-    plot_paths = {
-        "volcano_plot": output_dir / "deseq2_volcano_plot.pdf",
-        "pca_plot": output_dir / "deseq2_pca_plot.pdf",
-        "ma_plot": output_dir / "deseq2_ma_plot.pdf",
-    }
-    analyzer.plot_volcano(str(plot_paths["volcano_plot"]))
-    analyzer.plot_pca(str(plot_paths["pca_plot"]))
-    analyzer.plot_ma(str(plot_paths["ma_plot"]))
-    # plot helpers log-and-continue on failure; only record files that exist
-    written_plots = {name: str(path) for name, path in plot_paths.items() if path.exists()}
-    
-    # Print summary
-    summary = analyzer.get_summary()
-    logger.info("\n" + "="*50)
-    logger.info("DESeq2 Analysis Summary")
-    logger.info("="*50)
-    logger.info(f"Total genes: {summary['total_genes']}")
-    logger.info(
-        f"Significant genes (padj < {summary['alpha']} and |log2FC| > {summary['lfc_threshold']}): "
-        f"{summary['significant_genes']}"
+    analyzer.fit(
+        counts_df=counts_df,
+        contrast_factors=[c[0] for c in contrasts] if contrasts else ["condition"],
     )
-    logger.info(f"  - Up-regulated: {summary['upregulated_genes']}")
-    logger.info(f"  - Down-regulated: {summary['downregulated_genes']}")
-    logger.info("="*50)
+    if not contrasts:
+        contrasts = [analyzer._infer_contrast()]
 
-    manifest_path = write_manifest(
-        output_dir,
-        {
-            "command": "deseq2",
-            "inputs": {
-                "coldata": args.coldata,
-                "gene_counts": args.gene_counts,
-                "salmon_dir": args.salmon_dir,
-                "gtf": args.gtf,
-                "tx2gene": args.tx2gene,
-                "counts_source": "salmon_dir" if args.salmon_dir else "gene_counts",
-                "counts_file": counts_file,
-            },
-            "samples": list(metadata_df.index),
-            "design": args.design,
+    multi = len(contrasts) > 1
+    if multi:
+        logger.info(f"Running {len(contrasts)} contrasts against a single model fit")
+
+    contrast_entries = []
+    combined_significant = []
+    pca_plot = output_dir / "deseq2_pca_plot.pdf"
+    for contrast in contrasts:
+        label = f"{contrast[0]}_{contrast[1]}_vs_{contrast[2]}"
+        target_dir = output_dir / label if multi else output_dir
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        analyzer.contrast_results(contrast)
+        saved_files = analyzer.save_results(str(target_dir))
+        logger.info(f"[{label}] Saved results: {saved_files}")
+
+        plot_paths = {
+            "volcano_plot": target_dir / "deseq2_volcano_plot.pdf",
+            "ma_plot": target_dir / "deseq2_ma_plot.pdf",
+        }
+        analyzer.plot_volcano(str(plot_paths["volcano_plot"]))
+        analyzer.plot_ma(str(plot_paths["ma_plot"]))
+        if not pca_plot.exists():
+            # PCA is design-level: identical for every contrast, so plot once
+            analyzer.plot_pca(str(pca_plot))
+        # plot helpers log-and-continue on failure; only record files that exist
+        written_plots = {name: str(path) for name, path in plot_paths.items() if path.exists()}
+        if pca_plot.exists():
+            written_plots["pca_plot"] = str(pca_plot)
+
+        summary = analyzer.get_summary()
+        logger.info("\n" + "="*50)
+        logger.info(f"DESeq2 Analysis Summary [{label}]")
+        logger.info("="*50)
+        logger.info(f"Total genes: {summary['total_genes']}")
+        logger.info(
+            f"Significant genes (padj < {summary['alpha']} and |log2FC| > {summary['lfc_threshold']}): "
+            f"{summary['significant_genes']}"
+        )
+        logger.info(f"  - Up-regulated: {summary['upregulated_genes']}")
+        logger.info(f"  - Down-regulated: {summary['downregulated_genes']}")
+        logger.info("="*50)
+
+        contrast_entries.append({
             "contrast": contrast,
+            "label": label,
             "summary": summary,
-            "outputs": {
-                **saved_files,
-                **written_plots,
-            },
+            "outputs": {**saved_files, **written_plots},
+        })
+
+        if multi:
+            significant = pd.read_csv(saved_files["significant"], index_col=0)
+            significant.insert(0, "contrast", label)
+            combined_significant.append(significant)
+
+    if multi:
+        combined_path = output_dir / "deseq2_significant_all.csv"
+        pd.concat(combined_significant).to_csv(combined_path)
+        logger.info(f"Combined significant genes written to {combined_path}")
+        manifest_outputs = {
+            "significant_all": str(combined_path),
+            "pca_plot": str(pca_plot),
+            "contrasts": [entry["label"] for entry in contrast_entries],
+        }
+    else:
+        manifest_outputs = contrast_entries[0]["outputs"]
+
+    manifest = {
+        "command": "deseq2",
+        "inputs": {
+            "coldata": args.coldata,
+            "gene_counts": args.gene_counts,
+            "salmon_dir": args.salmon_dir,
+            "gtf": args.gtf,
+            "tx2gene": args.tx2gene,
+            "counts_source": "salmon_dir" if args.salmon_dir else "gene_counts",
+            "counts_file": counts_file,
         },
-    )
+        "samples": list(metadata_df.index),
+        "design": args.design,
+        "contrasts": contrast_entries,
+        "outputs": manifest_outputs,
+    }
+    if not multi:
+        # keep the single-contrast manifest shape stable for existing consumers
+        manifest["contrast"] = contrasts[0]
+        manifest["summary"] = contrast_entries[0]["summary"]
+
+    manifest_path = write_manifest(output_dir, manifest)
     logger.info(f"Saved manifest: {manifest_path}")
     
     return analyzer

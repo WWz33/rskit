@@ -180,7 +180,7 @@ class CliAliasTests(unittest.TestCase):
 
         args = main_deseq2.call_args.args[0]
         self.assertEqual(args.design, "~batch + condition")
-        self.assertEqual(args.contrast, "condition,treatment,control")
+        self.assertEqual(args.contrast, ["condition,treatment,control"])
         self.assertEqual(args.alpha, 0.01)
         self.assertEqual(args.lfc_threshold, 1.5)
         self.assertEqual(args.prefilter_min_count, 25)

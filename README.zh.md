@@ -196,7 +196,7 @@ geneB,0.00,1.00,2.32,2.58
 | n/a | `--salmon-args` | `salmon quant` 高级参数。允许覆盖的冲突参数会替换 rskit 默认值；受保护参数包括 `-t`/`--targets`、`-a`/`--alignments`、`-o`/`--output`、`-p`/`--threads` 和 `-l`/`--libType`。 |
 | n/a | `--fastp-args` | fastp 高级参数，只在使用 `--trim` 时生效。允许覆盖的冲突参数会替换 rskit 默认值；受保护参数包括 `-i`/`--in1`、`-I`/`--in2`、`-o`/`--out1`、`-O`/`--out2`、`-w`/`--thread`、报告路径、STDIN/STDOUT 和额外输出文件参数。 |
 | `-d` | `--design` | DESeq2 design formula；引用的每一列都必须存在于 coldata。默认：`~condition`。 |
-| `-c` | `--contrast` | DESeq2 contrast，格式为 `factor,level1,level2`；factor 和 level 会按 coldata 校验。 |
+| `-c` | `--contrast` | DESeq2 contrast，格式为 `factor,level1,level2`；factor 和 level 会按 coldata 校验。重复该参数可用同一次模型拟合跑多个 contrast。 |
 | `-a` | `--alpha` | summary 使用的 adjusted p-value 阈值。默认：`0.05`。 |
 | `-l` | `--lfc` | summary 使用的绝对 log2 fold-change 阈值。默认：`2.0`。 |
 | `-F` | `--min-count` | DESeq2 预过滤的 gene total count 下限。默认：`10`；设为 `0` 可关闭。 |
@@ -244,7 +244,7 @@ DESeq2 差异表达分析。
 | `-w` | `--work-dir` | 用于放置默认 `04_deseq2/` 输出目录的工作目录。默认：当前目录。 |
 | `-o` | `--output-dir` | 自定义 DESeq2 输出目录；覆盖 `<work-dir>/04_deseq2`。 |
 | `-d` | `--design` | DESeq2 design formula。默认：`~condition`。 |
-| `-c` | `--contrast` | Contrast，格式为 `factor,level1,level2`；加载 counts 前按 coldata 校验。 |
+| `-c` | `--contrast` | Contrast，格式为 `factor,level1,level2`；加载 counts 前按 coldata 校验。重复该参数可用同一次模型拟合跑多个 contrast。 |
 | `-a` | `--alpha` | summary 使用的 adjusted p-value 阈值。默认：`0.05`。 |
 | `-l` | `--lfc` | summary 使用的绝对 log2 fold-change 阈值。默认：`2.0`。 |
 | `-F` | `--min-count` | DESeq2 预过滤的 gene total count 下限。默认：`10`；设为 `0` 可关闭。 |
@@ -349,6 +349,8 @@ summary = analyzer.get_summary()
 print(f"Significant genes: {summary['significant_genes']}")
 ```
 
+需要跑多个 contrast 时，先调用一次 `analyzer.fit(counts_df, metadata_df, contrast_factors=[...])`，再对每个 contrast 调用 `analyzer.contrast_results(contrast)`；`analyze()` 是单 contrast 的便捷封装，会重新拟合模型。
+
 ### WGCNA
 
 ```python
@@ -413,6 +415,8 @@ results/
 ```
 
 `manifest.json` 会记录 DESeq2 输入、解析后的 counts 文件、sample IDs、design、contrast、summary 和关键输出文件。
+
+使用多个 `-c` 时模型只拟合一次，每个 contrast 的结果表和 volcano/MA 图放在各自的 `<factor>_<level1>_vs_<level2>/` 子目录下。PCA 图保留在顶层（它属于 design 层面，与 contrast 无关），`deseq2_significant_all.csv` 把所有 contrast 的显著基因合并为一张表并加上 `contrast` 列，`manifest.json` 会列出每个 contrast 及其 summary。
 
 ### WGCNA output
 

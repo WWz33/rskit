@@ -196,7 +196,7 @@ Complete pipeline: quantification + DESeq2 analysis.
 | n/a | `--salmon-args` | Advanced `salmon quant` arguments. Allowed conflicts replace rskit defaults; protected options include `-t`/`--targets`, `-a`/`--alignments`, `-o`/`--output`, `-p`/`--threads`, and `-l`/`--libType`. |
 | n/a | `--fastp-args` | Advanced fastp arguments used only with `--trim`. Allowed conflicts replace rskit defaults; protected options include `-i`/`--in1`, `-I`/`--in2`, `-o`/`--out1`, `-O`/`--out2`, `-w`/`--thread`, report paths, STDIN/STDOUT, and extra output-file options. |
 | `-d` | `--design` | DESeq2 design formula; every referenced column must exist in coldata. Default: `~condition`. |
-| `-c` | `--contrast` | DESeq2 contrast as `factor,level1,level2`; factor and levels are validated against coldata. |
+| `-c` | `--contrast` | DESeq2 contrast as `factor,level1,level2`; factor and levels are validated against coldata. Repeat the flag to run several contrasts against one shared model fit. |
 | `-a` | `--alpha` | Adjusted p-value threshold used for significance summaries. Default: `0.05`. |
 | `-l` | `--lfc` | Absolute log2 fold-change threshold used for significance summaries. Default: `2.0`. |
 | `-F` | `--min-count` | Minimum total count for DESeq2 gene prefiltering. Default: `10`; use `0` to disable. |
@@ -244,7 +244,7 @@ DESeq2 differential expression analysis.
 | `-w` | `--work-dir` | Work directory used to place the default `04_deseq2/` output directory. Default: current directory. |
 | `-o` | `--output-dir` | Custom DESeq2 output directory; overrides `<work-dir>/04_deseq2`. |
 | `-d` | `--design` | DESeq2 design formula. Default: `~condition`. |
-| `-c` | `--contrast` | Contrast as `factor,level1,level2`; validated against coldata before counts are loaded. |
+| `-c` | `--contrast` | Contrast as `factor,level1,level2`; validated against coldata before counts are loaded. Repeat the flag to run several contrasts against one shared model fit. |
 | `-a` | `--alpha` | Adjusted p-value threshold used for result summaries. Default: `0.05`. |
 | `-l` | `--lfc` | Absolute log2 fold-change threshold used for result summaries. Default: `2.0`. |
 | `-F` | `--min-count` | Minimum total count for DESeq2 gene prefiltering. Default: `10`; use `0` to disable. |
@@ -349,6 +349,8 @@ summary = analyzer.get_summary()
 print(f"Significant genes: {summary['significant_genes']}")
 ```
 
+For several contrasts, call `analyzer.fit(counts_df, metadata_df, contrast_factors=[...])` once and then `analyzer.contrast_results(contrast)` per contrast; `analyze()` is the single-contrast convenience wrapper and refits the model.
+
 ### WGCNA
 
 ```python
@@ -413,6 +415,8 @@ results/
 ```
 
 `manifest.json` records the DESeq2 inputs, resolved counts file, sample IDs, design, contrast, summary, and key output files.
+
+With several `-c` flags the model is fitted once and each contrast gets its own `<factor>_<level1>_vs_<level2>/` subdirectory holding the same tables and volcano/MA plots. The PCA plot stays at the top level (it is design-level, not contrast-level), `deseq2_significant_all.csv` concatenates every contrast's significant genes with a `contrast` column, and `manifest.json` lists each contrast with its own summary.
 
 ### WGCNA output
 

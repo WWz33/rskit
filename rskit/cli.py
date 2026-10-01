@@ -718,8 +718,8 @@ Examples:
         help="Custom output directory for DESeq2 results")
     parser_deseq2.add_argument("-d", "--design", default="~condition",
         help="Design formula (e.g., '~condition', '~batch + condition')")
-    parser_deseq2.add_argument("-c", "--contrast",
-        help="Contrast specification (e.g., 'condition,treatment,control')")
+    parser_deseq2.add_argument("-c", "--contrast", action="append",
+        help="Contrast as 'factor,level1,level2'; repeat for multiple contrasts sharing one model fit")
     parser_deseq2.add_argument("-a", "--alpha", type=probability_argument, default=0.05,
         help="Significance threshold for adjusted p-values")
     parser_deseq2.add_argument("-l", "--lfc", dest="lfc_threshold", type=non_negative_argument, default=2.0,
@@ -871,8 +871,8 @@ Examples:
         help="Advanced fastp arguments. User values replace rskit defaults unless the option manages inputs, outputs, reports, or threads.")
     parser_all.add_argument("-d", "--design", default="~condition",
         help="Design formula (e.g., '~condition', '~batch + condition')")
-    parser_all.add_argument("-c", "--contrast",
-        help="Contrast specification (e.g., 'condition,treatment,control')")
+    parser_all.add_argument("-c", "--contrast", action="append",
+        help="Contrast as 'factor,level1,level2'; repeat for multiple contrasts sharing one model fit")
     parser_all.add_argument("-a", "--alpha", type=probability_argument, default=0.05,
         help="Significance threshold for adjusted p-values")
     parser_all.add_argument("-l", "--lfc", dest="lfc_threshold", type=non_negative_argument, default=2.0,

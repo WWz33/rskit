@@ -17,6 +17,7 @@ from rskit.core.deseq2 import (
     Deseq2Analyzer,
     _lfc_shrink_coefficient,
     parse_contrast,
+    parse_contrasts,
     run_deseq2_cli,
 )
 from rskit.core.pipeline import RNAseqPipeline
@@ -110,6 +111,7 @@ class QuantExpressionTests(unittest.TestCase):
 
             def deseq2(self):
                 captured["ran_deseq2"] = True
+                captured["deseq2_calls"] = captured.get("deseq2_calls", 0) + 1
 
         class FakeDeseqStats:
             def __init__(self, dds, **kwargs):
@@ -124,6 +126,7 @@ class QuantExpressionTests(unittest.TestCase):
                     index=dds.counts.columns,
                 )
                 captured["contrast"] = kwargs["contrast"]
+                captured.setdefault("contrasts", []).append(kwargs["contrast"])
 
             def summary(self):
                 captured["summary"] = True
@@ -529,7 +532,8 @@ class QuantExpressionTests(unittest.TestCase):
         )
 
         with mock.patch("rskit.core.deseq2.Deseq2Analyzer.load_counts_from_file", return_value=pd.DataFrame({"geneA": [10, 12]}, index=["sample1", "sample2"])) as load_counts_from_file, \
-             mock.patch("rskit.core.deseq2.Deseq2Analyzer.analyze", return_value=fake_results), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.fit"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.contrast_results", return_value=fake_results), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.save_results", return_value={}), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_volcano"), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_pca"), \
@@ -577,7 +581,8 @@ class QuantExpressionTests(unittest.TestCase):
         with mock.patch(
             "rskit.core.deseq2.Deseq2Analyzer.load_counts_from_file",
             return_value=pd.DataFrame({"geneA": [10, 12]}, index=["sample1", "sample2"]),
-        ), mock.patch("rskit.core.deseq2.Deseq2Analyzer.analyze", return_value=pd.DataFrame()), \
+        ), mock.patch("rskit.core.deseq2.Deseq2Analyzer.fit"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.contrast_results", return_value=pd.DataFrame()), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.save_results", return_value={}), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_volcano"), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_pca"), \
@@ -639,7 +644,8 @@ class QuantExpressionTests(unittest.TestCase):
                 "tx2gene": str(quant_dir / "tx2gene.tsv"),
              }) as merge_salmon_quant_tables, \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.load_counts_from_file", return_value=pd.DataFrame({"geneA": [10, 12]}, index=["sample1", "sample2"])) as load_counts_from_file, \
-             mock.patch("rskit.core.deseq2.Deseq2Analyzer.analyze", return_value=fake_results), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.fit"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.contrast_results", return_value=fake_results), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.save_results", return_value={}), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_volcano"), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_pca"), \
@@ -743,7 +749,8 @@ class QuantExpressionTests(unittest.TestCase):
         )
 
         with mock.patch("rskit.core.deseq2.Deseq2Analyzer.load_counts_from_file", return_value=pd.DataFrame({"geneA": [10, 12]}, index=["sample1", "sample2"])), \
-             mock.patch("rskit.core.deseq2.Deseq2Analyzer.analyze", return_value=fake_results) as analyze, \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.fit"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.contrast_results", return_value=fake_results) as contrast_results, \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.save_results", return_value={}), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_volcano"), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_pca"), \
@@ -758,7 +765,7 @@ class QuantExpressionTests(unittest.TestCase):
              }):
             run_deseq2_cli(args)
 
-        analyze.assert_called_once_with(contrast=["condition", "B", "A"])
+        contrast_results.assert_called_once_with(["condition", "B", "A"])
 
     def test_run_deseq2_cli_passes_prefilter_threshold_to_config(self) -> None:
         counts_path = self.root / "counts.csv"
@@ -794,7 +801,7 @@ class QuantExpressionTests(unittest.TestCase):
                 {"geneA": [10, 12]},
                 index=["sample1", "sample2"],
             )
-            analyzer.analyze.return_value = pd.DataFrame(
+            analyzer.contrast_results.return_value = pd.DataFrame(
                 {
                     "baseMean": [1.0],
                     "log2FoldChange": [0.5],
@@ -803,6 +810,7 @@ class QuantExpressionTests(unittest.TestCase):
                 },
                 index=["geneA"],
             )
+            analyzer._infer_contrast.return_value = ["condition", "B", "A"]
             analyzer.save_results.return_value = {}
             analyzer.get_summary.return_value = {
                 "total_genes": 1,
@@ -817,6 +825,115 @@ class QuantExpressionTests(unittest.TestCase):
 
         config = analyzer_class.call_args.args[0]
         self.assertEqual(config.prefilter_min_count, 25)
+
+    def test_run_deseq2_cli_runs_multiple_contrasts_on_one_fit(self) -> None:
+        counts_path = self.root / "counts.csv"
+        pd.DataFrame(
+            {"sample1": [10], "sample2": [12], "sample3": [14]}, index=["geneA"]
+        ).to_csv(counts_path)
+        coldata_path = self.root / "coldata.csv"
+        coldata_path.write_text(
+            "sample,condition\nsample1,control\nsample2,treat1\nsample3,treat2\n",
+            encoding="utf-8",
+        )
+        output_dir = self.root / "04_deseq2"
+        args = argparse.Namespace(
+            salmon_dir=None,
+            gene_counts=str(counts_path),
+            coldata=str(coldata_path),
+            gtf=None,
+            tx2gene=None,
+            output_dir=str(output_dir),
+            design="~condition",
+            alpha=0.05,
+            lfc_threshold=2.0,
+            prefilter_min_count=10,
+            threads=None,
+            contrast=["condition,treat1,control", "condition,treat2,control"],
+        )
+        captured = {}
+
+        def fake_save(target, prefix="deseq2"):
+            target_path = Path(target)
+            target_path.mkdir(parents=True, exist_ok=True)
+            files = {}
+            for name in ("results", "significant", "upregulated", "downregulated"):
+                path = target_path / f"{prefix}_{name}.csv"
+                path.write_text(
+                    "gene_id,log2FoldChange,padj\ngeneA,3.0,0.001\n", encoding="utf-8"
+                )
+                files[name] = str(path)
+            return files
+
+        with self._patch_pydeseq2_modules(captured), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.load_counts_from_file",
+                        return_value=pd.DataFrame(
+                            {"geneA": [10, 12, 14]}, index=["sample1", "sample2", "sample3"]
+                        )), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.save_results", side_effect=fake_save), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_volcano"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_pca"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_ma"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.get_summary", return_value={
+                 "total_genes": 1,
+                 "significant_genes": 1,
+                 "upregulated_genes": 1,
+                 "downregulated_genes": 0,
+                 "alpha": 0.05,
+                 "lfc_threshold": 2.0,
+             }):
+            run_deseq2_cli(args)
+
+        # one shared fit, one Wald test per contrast
+        self.assertEqual(captured["deseq2_calls"], 1)
+        self.assertEqual(captured["contrasts"], [
+            ["condition", "treat1", "control"],
+            ["condition", "treat2", "control"],
+        ])
+
+        # per-contrast subdirectories plus a merged significant table
+        self.assertTrue((output_dir / "condition_treat1_vs_control" / "deseq2_results.csv").exists())
+        self.assertTrue((output_dir / "condition_treat2_vs_control" / "deseq2_results.csv").exists())
+        combined = pd.read_csv(output_dir / "deseq2_significant_all.csv")
+        self.assertEqual(
+            set(combined["contrast"]),
+            {"condition_treat1_vs_control", "condition_treat2_vs_control"},
+        )
+        self.assertEqual(list(combined["gene_id"]), ["geneA", "geneA"])
+
+        manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(manifest["contrasts"]), 2)
+        self.assertEqual(manifest["outputs"]["contrasts"], [
+            "condition_treat1_vs_control",
+            "condition_treat2_vs_control",
+        ])
+        self.assertNotIn("contrast", manifest)  # legacy key is single-contrast only
+
+    def test_parse_contrasts_validates_each_and_rejects_duplicates(self) -> None:
+        metadata = pd.DataFrame(
+            {"condition": ["control", "treat1", "treat2"]},
+            index=["s1", "s2", "s3"],
+        )
+
+        self.assertEqual(
+            parse_contrasts(["condition,treat1,control", "condition,treat2,control"], metadata),
+            [["condition", "treat1", "control"], ["condition", "treat2", "control"]],
+        )
+        # a bare string is still accepted (programmatic callers)
+        self.assertEqual(
+            parse_contrasts("condition,treat1,control", metadata),
+            [["condition", "treat1", "control"]],
+        )
+        self.assertIsNone(parse_contrasts(None, metadata))
+
+        with self.assertRaisesRegex(ValueError, "Duplicate contrast"):
+            parse_contrasts(
+                ["condition,treat1,control", "condition,treat1,control"], metadata
+            )
+        with self.assertRaisesRegex(ValueError, "format"):
+            parse_contrasts(["condition,treat1"], metadata)
+        with self.assertRaisesRegex(ValueError, "not found"):
+            parse_contrasts(["condition,missing,control"], metadata)
 
     def test_run_deseq2_cli_writes_manifest(self) -> None:
         counts_path = self.root / "counts.csv"
@@ -854,7 +971,8 @@ class QuantExpressionTests(unittest.TestCase):
         )
 
         with mock.patch("rskit.core.deseq2.Deseq2Analyzer.load_counts_from_file", return_value=pd.DataFrame({"geneA": [10, 12]}, index=["sample1", "sample2"])), \
-             mock.patch("rskit.core.deseq2.Deseq2Analyzer.analyze", return_value=fake_results), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.fit"), \
+             mock.patch("rskit.core.deseq2.Deseq2Analyzer.contrast_results", return_value=fake_results), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.save_results", return_value={"results": str(output_dir / "deseq2_results.csv")}), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_volcano"), \
              mock.patch("rskit.core.deseq2.Deseq2Analyzer.plot_pca"), \
