@@ -8,8 +8,8 @@ import pandas as pd
 
 import rskit.input_contracts as input_contracts
 from rskit.input_contracts import (
-    detect_separator,
     design_columns,
+    detect_separator,
     ensure_genes_by_samples,
     load_coldata,
     read_table,

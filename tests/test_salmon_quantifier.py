@@ -216,7 +216,8 @@ class SalmonQuantifierTests(unittest.TestCase):
             counts_file.write_text("gene_id,sample1\n", encoding="utf-8")
 
             # counts exported before quant.sf existed -> stale -> re-export
-            import os, time
+            import os
+            import time
             old = time.time() - 3600
             os.utime(counts_file, (old, old))
             (sample_dir / "quant.sf").write_text("stub", encoding="utf-8")

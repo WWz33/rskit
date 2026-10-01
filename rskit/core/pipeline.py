@@ -1,10 +1,12 @@
 from pathlib import Path
 from typing import Dict, List, Optional
+
 import pandas as pd
+
 from rskit.config import PipelineConfig
-from rskit.core.star import StarIndexer, StarAligner, alignment_complete
-from rskit.core.salmon import SalmonExpressionExporter, SalmonQuantifier
 from rskit.core.deseq2 import Deseq2Analyzer
+from rskit.core.salmon import SalmonExpressionExporter, SalmonQuantifier
+from rskit.core.star import StarAligner, StarIndexer, alignment_complete
 from rskit.utils.logger import get_logger
 from rskit.utils.validators import check_star_index
 

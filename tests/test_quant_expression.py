@@ -1,7 +1,6 @@
 import argparse
 import csv
 import json
-import subprocess
 import sys
 import tempfile
 import types
@@ -12,7 +11,7 @@ from unittest import mock
 import pandas as pd
 
 from rskit import cli
-from rskit.config import DESeq2Config, PipelineConfig, SalmonConfig, StarConfig
+from rskit.config import DESeq2Config, PipelineConfig
 from rskit.core.deseq2 import (
     Deseq2Analyzer,
     _lfc_shrink_coefficient,

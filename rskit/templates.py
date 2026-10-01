@@ -5,7 +5,6 @@ import pandas as pd
 
 from rskit.input_contracts import detect_separator
 
-
 TEMPLATE_ROWS: Dict[str, List[Dict[str, str]]] = {
     "coldata": [
         {

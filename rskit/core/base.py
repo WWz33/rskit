@@ -2,8 +2,8 @@ import shutil
 import subprocess
 from abc import ABC, abstractmethod
 from typing import Optional
-from rskit.utils.logger import get_logger
 
+from rskit.utils.logger import get_logger
 
 _DRY_RUN = False
 

@@ -1,25 +1,31 @@
 import argparse
-import sys
 import os
-from pathlib import Path
+import sys
 from dataclasses import dataclass
-from typing import Optional, List, Dict, Tuple
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
 from rskit.cli_args import merge_extra_args
+from rskit.config import PipelineConfig, SalmonConfig, StarConfig
+from rskit.core.base import Tool, is_dry_run, require_tools, set_dry_run, tool_version
+from rskit.core.deseq2 import run_deseq2_cli
+from rskit.core.pipeline import RNAseqPipeline
+from rskit.core.salmon import SalmonExpressionExporter, merge_salmon_quant_tables
+from rskit.core.star import (
+    StarIndexer,
+    alignment_complete,
+    index_input_changes,
+    read_index_fingerprint,
+)
+from rskit.core.wgcna import run_wgcna_cli
 from rskit.input_contracts import load_coldata, resolve_path_from_table, validate_sample_name
 from rskit.input_validation import validate_input_files
 from rskit.templates import write_template
-from rskit.config import StarConfig, SalmonConfig, PipelineConfig, DESeq2Config
-from rskit.core.pipeline import RNAseqPipeline
-from rskit.core.base import Tool, is_dry_run, require_tools, set_dry_run, tool_version
-from rskit.core.deseq2 import run_deseq2_cli
-from rskit.core.wgcna import run_wgcna_cli
 from rskit.utils.logger import get_logger
-from rskit.utils.validators import check_and_prepare_index
+from rskit.utils.manifest import write_manifest
 from rskit.utils.parallel import calculate_sample_plan, run_samples_parallel
 from rskit.utils.qc_summary import write_qc_summary
-from rskit.core.star import StarIndexer, alignment_complete, index_input_changes, read_index_fingerprint
-from rskit.utils.manifest import write_manifest
-from rskit.core.salmon import SalmonExpressionExporter, merge_salmon_quant_tables
+from rskit.utils.validators import check_and_prepare_index
 
 logger = get_logger(__name__)
 
@@ -569,7 +575,7 @@ def main_deseq2(args):
     
     # Run DESeq2 analysis
     try:
-        analyzer = run_deseq2_cli(args)
+        run_deseq2_cli(args)
         logger.info("DESeq2 analysis completed successfully!")
     except Exception as e:
         logger.error(f"DESeq2 analysis failed: {e}")
@@ -592,7 +598,7 @@ def main_wgcna(args):
         return
     
     try:
-        analyzer = run_wgcna_cli(args)
+        run_wgcna_cli(args)
         logger.info("WGCNA analysis completed successfully!")
     except Exception as e:
         logger.error(f"WGCNA analysis failed: {e}")
@@ -657,7 +663,7 @@ def main_all(args):
     )
     
     try:
-        analyzer = run_deseq2_cli(deseq2_args)
+        run_deseq2_cli(deseq2_args)
         logger.info("DESeq2 analysis completed successfully!")
     except Exception as e:
         logger.error(f"DESeq2 analysis failed: {e}")

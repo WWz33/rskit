@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest import mock
 
 from rskit.cli import trim_reads
+from rskit.cli_args import merge_extra_args
 
 
 class FastpArgsTests(unittest.TestCase):
@@ -115,10 +116,6 @@ class FastpArgsTests(unittest.TestCase):
                     threads=4,
                     fastp_args="--out1=other_R1.fq.gz",
                 )
-
-from rskit.cli import trim_reads
-from rskit.cli_args import merge_extra_args
-
 
 class PassthroughGuardTests(unittest.TestCase):
     def test_protected_options_block_prefix_and_attached_forms(self) -> None:

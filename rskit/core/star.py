@@ -2,10 +2,11 @@ import json
 import shutil
 from pathlib import Path
 from typing import Dict, List, Optional
+
 from rskit.cli_args import merge_extra_args
-from rskit.core.base import ToolBase, Tool, is_dry_run, tool_version
 from rskit.config import StarConfig
-from rskit.utils.validators import validate_file, check_star_index
+from rskit.core.base import Tool, is_dry_run, tool_version
+from rskit.utils.validators import check_star_index, validate_file
 
 STAR_INDEX_PROTECTED_OPTIONS = {
     "--runThreadN",

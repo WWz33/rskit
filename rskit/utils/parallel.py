@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
+
 from rskit.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -49,9 +50,9 @@ def process_single_sample(args):
     (sample_name, sample_data, index_dir, transcript_fasta, workdirs, threads,
      skip_existing, star_args, salmon_args, salmon_direct) = args
 
-    from rskit.core.star import StarAligner, alignment_complete
+    from rskit.config import SalmonConfig, StarConfig
     from rskit.core.salmon import SalmonQuantifier
-    from rskit.config import StarConfig, SalmonConfig
+    from rskit.core.star import StarAligner, alignment_complete
 
     aligner = StarAligner(StarConfig(threads=threads, extra_args=star_args))
     quantifier = SalmonQuantifier(SalmonConfig(threads=threads, extra_args=salmon_args))

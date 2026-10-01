@@ -1,9 +1,8 @@
+import re
 from pathlib import Path
 from typing import List, Optional, Sequence
 
 import pandas as pd
-import re
-
 
 SAMPLE_NAME_PATTERN = re.compile(r"[A-Za-z0-9._-]+")
 

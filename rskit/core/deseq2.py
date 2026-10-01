@@ -1,7 +1,9 @@
 from pathlib import Path
 from typing import Dict, List, Optional
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+
 from rskit.config import DESeq2Config
 from rskit.core.salmon import SalmonExpressionExporter, merge_salmon_quant_tables
 from rskit.input_contracts import (

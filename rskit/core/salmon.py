@@ -1,13 +1,13 @@
+import gzip
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
-import gzip
 
 import numpy as np
 import pandas as pd
 
-from rskit.core.base import Tool, is_dry_run
 from rskit.cli_args import merge_extra_args
 from rskit.config import SalmonConfig
+from rskit.core.base import Tool, is_dry_run
 from rskit.utils.gtf import iter_gtf
 from rskit.utils.logger import get_logger
 from rskit.utils.validators import validate_file
