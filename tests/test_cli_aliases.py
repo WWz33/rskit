@@ -51,6 +51,32 @@ class CliAliasTests(unittest.TestCase):
                     cli.main()
             self.assertEqual(ctx.exception.code, 2)
 
+    def test_main_verbose_reraises_for_traceback(self) -> None:
+        argv = [
+            "rskit",
+            "quant",
+            "-s",
+            "sample1",
+            "-1",
+            "r1.fq.gz",
+            "-2",
+            "r2.fq.gz",
+            "-g",
+            "genome.fa",
+            "-gtf",
+            "annotation.gtf",
+            "-gf",
+            "transcripts.fa",
+            "-o",
+            "results",
+            "-v",
+        ]
+
+        with mock.patch.object(sys, "argv", argv), \
+             mock.patch("rskit.cli.main_quant", side_effect=ValueError("bad input")):
+            with self.assertRaisesRegex(ValueError, "bad input"):
+                cli.main()
+
     def test_main_reports_user_errors_with_exit_code_1(self) -> None:
         # user-facing failures (bad input, missing tool) exit cleanly instead
         # of dumping a traceback

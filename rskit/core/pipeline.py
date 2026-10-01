@@ -22,7 +22,7 @@ class RNAseqPipeline:
     def run(self, samples: Dict[str, Dict], genome_fasta: str, gtf_file: str,
             transcript_fasta: str, index_dir: str, output_dir: str,
             quant_output_dir: str, force_index: bool = False,
-            skip_existing: bool = False) -> Dict:
+            skip_existing: bool = False, keep_going: bool = False) -> Dict:
         results = {}
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
@@ -40,6 +40,7 @@ class RNAseqPipeline:
         else:
             self.logger.info("Index found, skipping build")
 
+        failures = []
         for sample_name, sample_data in samples.items():
             # skip before aligning, mirroring the parallel path
             quant_file = quant_path / sample_name / "quant.sf"
@@ -48,30 +49,42 @@ class RNAseqPipeline:
                 results[sample_name] = {"quantification": {"quant": str(quant_file)}}
                 continue
 
-            self.logger.info(f"Processing sample: {sample_name}")
-            sample_output = output_path / sample_name
-            sample_output.mkdir(parents=True, exist_ok=True)
+            try:
+                self.logger.info(f"Processing sample: {sample_name}")
+                sample_output = output_path / sample_name
+                sample_output.mkdir(parents=True, exist_ok=True)
 
-            align_prefix = str(sample_output / f"{sample_name}_")
-            if skip_existing and alignment_complete(align_prefix):
-                # re-quantification only: STAR is the expensive half
-                self.logger.info(f"[{sample_name}] Reusing existing alignment, skipping STAR")
-                align_results = {
-                    "bam": f"{align_prefix}Aligned.out.bam",
-                    "transcriptome_bam": f"{align_prefix}Aligned.toTranscriptome.out.bam",
-                    "log": f"{align_prefix}Log.final.out",
-                }
-            else:
-                align_results = self.aligner.align(index_dir, sample_data["fq1"], sample_data["fq2"],
-                                                  align_prefix, sample_name=sample_name)
+                align_prefix = str(sample_output / f"{sample_name}_")
+                if skip_existing and alignment_complete(align_prefix):
+                    # re-quantification only: STAR is the expensive half
+                    self.logger.info(f"[{sample_name}] Reusing existing alignment, skipping STAR")
+                    align_results = {
+                        "bam": f"{align_prefix}Aligned.out.bam",
+                        "transcriptome_bam": f"{align_prefix}Aligned.toTranscriptome.out.bam",
+                        "log": f"{align_prefix}Log.final.out",
+                    }
+                else:
+                    align_results = self.aligner.align(index_dir, sample_data["fq1"], sample_data["fq2"],
+                                                      align_prefix, sample_name=sample_name)
 
-            salmon_output = quant_path / sample_name
-            quant_results = self.quantifier.quantify(transcript_fasta, align_results["transcriptome_bam"],
-                                                     str(salmon_output), sample_name=sample_name,
-                                                     skip_if_exists=skip_existing)
+                salmon_output = quant_path / sample_name
+                quant_results = self.quantifier.quantify(transcript_fasta, align_results["transcriptome_bam"],
+                                                         str(salmon_output), sample_name=sample_name,
+                                                         skip_if_exists=skip_existing)
 
-            results[sample_name] = {"alignment": align_results, "quantification": quant_results}
-            self.logger.info(f"Completed sample: {sample_name}")
+                results[sample_name] = {"alignment": align_results, "quantification": quant_results}
+                self.logger.info(f"Completed sample: {sample_name}")
+            except Exception as e:
+                if not keep_going:
+                    raise
+                failures.append((sample_name, e))
+                self.logger.error(f"[{sample_name}] Sample failed: {e}")
+
+        if failures:
+            raise RuntimeError(
+                f"{len(failures)} sample(s) failed: {', '.join(name for name, _ in failures)}. "
+                f"Re-run with --skip-existing to resume from completed samples."
+            ) from failures[0][1]
 
         return results
     

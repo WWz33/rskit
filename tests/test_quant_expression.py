@@ -1201,6 +1201,83 @@ class QuantExpressionTests(unittest.TestCase):
 
         summary.assert_called_once()
 
+    def test_dry_run_prints_commands_without_executing(self) -> None:
+        from rskit.core.base import Tool, require_tools, set_dry_run
+
+        set_dry_run(True)
+        try:
+            with mock.patch("subprocess.run") as run_command:
+                with self.assertLogs("Tool", level="INFO") as logs:
+                    Tool("STAR")._run_command(["STAR", "--runMode", "genomeGenerate"])
+            # preflight is also skipped so a dry run works without the tools
+            require_tools("definitely-not-a-real-binary")
+        finally:
+            set_dry_run(False)
+
+        run_command.assert_not_called()
+        self.assertTrue(any("[dry-run]" in message for message in logs.output))
+
+    def test_dry_run_quant_writes_no_outputs(self) -> None:
+        coldata_path = self.root / "coldata.csv"
+        for name in ("sample1_R1.fq.gz", "sample1_R2.fq.gz"):
+            (self.root / name).write_text("stub", encoding="utf-8")
+        coldata_path.write_text(
+            "sample,r1,r2\nsample1,sample1_R1.fq.gz,sample1_R2.fq.gz\n", encoding="utf-8"
+        )
+        for name in ("genome.fa", "annotation.gtf", "transcripts.fa"):
+            (self.root / name).write_text("stub", encoding="utf-8")
+
+        argv = [
+            "rskit", "quant",
+            "-S", str(coldata_path),
+            "-g", str(self.root / "genome.fa"),
+            "-gtf", str(self.root / "annotation.gtf"),
+            "-gf", str(self.root / "transcripts.fa"),
+            "-o", str(self.root / "results"),
+            "--dry-run",
+        ]
+
+        with mock.patch.object(sys, "argv", argv), \
+             mock.patch("subprocess.run") as run_command:
+            cli.main()
+
+        run_command.assert_not_called()
+        quant_dir = self.root / "results" / "03_quant"
+        self.assertFalse((quant_dir / "gene_counts.csv").exists())
+        self.assertFalse((quant_dir / "manifest.json").exists())
+        self.assertFalse((self.root / "results" / "00_summary" / "summary.csv").exists())
+
+    def test_pipeline_run_keep_going_collects_sample_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            pipeline = RNAseqPipeline(PipelineConfig(output_dir=tempdir))
+            pipeline.indexer.build_index = mock.Mock(return_value=True)
+
+            def fake_align(index_dir, fq1, fq2, output_prefix, sample_name=None):
+                if sample_name == "bad":
+                    raise RuntimeError("STAR crashed")
+                return {"bam": "b", "transcriptome_bam": "tb", "log": "l"}
+
+            pipeline.aligner.align = mock.Mock(side_effect=fake_align)
+            pipeline.quantifier.quantify = mock.Mock(return_value={"quant": "q"})
+
+            with self.assertRaises(RuntimeError) as ctx:
+                pipeline.run(
+                    samples={
+                        "bad": {"fq1": "r1", "fq2": "r2"},
+                        "good": {"fq1": "r1", "fq2": "r2"},
+                    },
+                    genome_fasta="genome.fa",
+                    gtf_file="genes.gtf",
+                    transcript_fasta="transcripts.fa",
+                    index_dir=str(Path(tempdir) / "index"),
+                    output_dir=str(Path(tempdir) / "02_bam"),
+                    quant_output_dir=str(Path(tempdir) / "03_quant"),
+                    keep_going=True,
+                )
+
+        self.assertIn("bad", str(ctx.exception))
+        pipeline.quantifier.quantify.assert_called_once()
+
     def test_lfc_shrink_coefficient_matches_design_column_naming(self) -> None:
         # pydeseq2 names LFC columns after the design matrix (formulaic treatment coding)
         columns = ["Intercept", "batch[T.y]", "condition[T.B]"]

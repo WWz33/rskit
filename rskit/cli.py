@@ -10,7 +10,7 @@ from rskit.input_validation import validate_input_files
 from rskit.templates import write_template
 from rskit.config import StarConfig, SalmonConfig, PipelineConfig, DESeq2Config
 from rskit.core.pipeline import RNAseqPipeline
-from rskit.core.base import Tool, require_tools, tool_version
+from rskit.core.base import Tool, is_dry_run, require_tools, set_dry_run, tool_version
 from rskit.core.deseq2 import run_deseq2_cli
 from rskit.core.wgcna import run_wgcna_cli
 from rskit.utils.logger import get_logger
@@ -281,14 +281,16 @@ def build_index_if_needed(index_dir: Path, genome_fasta: str, gtf_file: str,
 def run_quantification(samples: Dict[str, Dict], genome_fasta: str, gtf_file: str,
                        transcript_fasta: str, index_dir: Path, workdirs: Dict[str, Path],
                        threads_per_sample: int, jobs: int, skip_existing: bool = False,
-                       star_args: str = "", salmon_args: str = "") -> Dict:
+                       star_args: str = "", salmon_args: str = "",
+                       keep_going: bool = False) -> Dict:
     """Run quantification pipeline (parallel or sequential)"""
     num_samples = len(samples)
     
     if jobs > 1 and num_samples > 1:
         return run_samples_parallel(samples, str(index_dir), transcript_fasta, 
                                     workdirs, threads_per_sample, jobs, skip_existing,
-                                    star_args=star_args, salmon_args=salmon_args)
+                                    star_args=star_args, salmon_args=salmon_args,
+                                    keep_going=keep_going)
     else:
         config = PipelineConfig(
             star=StarConfig(threads=threads_per_sample, extra_args=star_args),
@@ -305,7 +307,8 @@ def run_quantification(samples: Dict[str, Dict], genome_fasta: str, gtf_file: st
             output_dir=str(workdirs['bam']),
             quant_output_dir=str(workdirs['quant']),
             force_index=False,
-            skip_existing=skip_existing
+            skip_existing=skip_existing,
+            keep_going=keep_going,
         )
 
 
@@ -435,7 +438,11 @@ def run_quant_phase(args, workdirs: Dict[str, Path], command: str = "quant") -> 
         results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
                                      index_dir, workdirs, sample_plan.threads_per_sample,
                                      sample_plan.active_jobs, args.skip_existing,
-                                     star_args=star_args, salmon_args=salmon_args)
+                                     star_args=star_args, salmon_args=salmon_args,
+                                     keep_going=getattr(args, "keep_going", False))
+        if is_dry_run():
+            logger.info("Dry run: skipping gene-level export, QC summary, and manifest")
+            return samples_list, {}
         expression_outputs = None
         if not args.merge_sf:
             expression_outputs = SalmonExpressionExporter.find_reusable_gene_tables(
@@ -521,6 +528,13 @@ def main_deseq2(args):
     if not args.salmon_dir and not args.gene_counts:
         raise ValueError("Either --salmon-dir or --gene-counts must be provided")
 
+    if getattr(args, "dry_run", False):
+        logger.info(
+            "Dry run: would run DESeq2 with design=%s, contrast=%s, counts=%s",
+            args.design, args.contrast, args.salmon_dir or args.gene_counts,
+        )
+        return
+
     # Use default 04_deseq2 directory if output_dir not specified
     output_dir = Path(args.output_dir) if args.output_dir else Path(args.work_dir) / "04_deseq2"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -544,6 +558,12 @@ def main_wgcna(args):
     
     if not args.expression:
         raise ValueError("Expression file must be provided")
+
+    if getattr(args, "dry_run", False):
+        logger.info(
+            "Dry run: would run WGCNA on %s (output: %s)", args.expression, args.output_dir
+        )
+        return
     
     try:
         analyzer = run_wgcna_cli(args)
@@ -657,6 +677,12 @@ def main():
         help="Advanced Salmon quant arguments. User values replace rskit defaults unless the option manages inputs, outputs, library type, or threads.")
     parser_quant.add_argument("--fastp-args", default="",
         help="Advanced fastp arguments. User values replace rskit defaults unless the option manages inputs, outputs, reports, or threads.")
+    parser_quant.add_argument("-v", "--verbose", action="store_true",
+        help="Show the full traceback when a command fails")
+    parser_quant.add_argument("-kg", "--keep-going", action="store_true",
+        help="Continue with remaining samples after a sample fails, then report all failures")
+    parser_quant.add_argument("--dry-run", action="store_true",
+        help="Print the STAR/Salmon/fastp commands without running them")
     parser_quant.set_defaults(func=main_quant)
     
     # deseq2 command
@@ -703,6 +729,10 @@ Examples:
     parser_deseq2.add_argument("-t", "--threads", type=int, default=None,
         help="Number of CPUs for PyDESeq2 inference")
     
+    parser_deseq2.add_argument("-v", "--verbose", action="store_true",
+        help="Show the full traceback when a command fails")
+    parser_deseq2.add_argument("--dry-run", action="store_true",
+        help="Report the resolved DESeq2 inputs without running the analysis")
     parser_deseq2.set_defaults(func=main_deseq2)
     
     # wgcna command
@@ -748,6 +778,10 @@ Examples:
     parser_wgcna.add_argument("-tc", "-tpm", "--tpm-cutoff", dest="tpm_cutoff", type=int, default=1,
         help="TPM cutoff for filtering")
     
+    parser_wgcna.add_argument("-v", "--verbose", action="store_true",
+        help="Show the full traceback when a command fails")
+    parser_wgcna.add_argument("--dry-run", action="store_true",
+        help="Report the resolved WGCNA inputs without running the analysis")
     parser_wgcna.set_defaults(func=main_wgcna)
 
     def add_validate_parser(command: str, help_text: str):
@@ -766,6 +800,8 @@ Examples:
             help="Optional gene counts matrix to validate against coldata")
         parser_validate.add_argument("-e", "--expression",
             help="Optional expression matrix to validate against coldata")
+        parser_validate.add_argument("-v", "--verbose", action="store_true",
+            help="Show the full traceback when a command fails")
         parser_validate.set_defaults(func=main_validate)
 
     add_validate_parser("validate", "Validate input files without running analysis tools")
@@ -782,6 +818,8 @@ Examples:
         help="Output template path; .csv writes CSV and .tsv/.txt writes TSV")
     parser_template.add_argument("-f", "--force", action="store_true",
         help="Overwrite output file if it already exists")
+    parser_template.add_argument("-v", "--verbose", action="store_true",
+        help="Show the full traceback when a command fails")
     parser_template.set_defaults(func=main_template)
     
     # all command (quant -> deseq2)
@@ -842,6 +880,12 @@ Examples:
     parser_all.add_argument("-F", "--min-count", dest="prefilter_min_count", type=int, default=10,
         help="Minimum total count for DESeq2 gene prefiltering; use 0 to disable")
     
+    parser_all.add_argument("-v", "--verbose", action="store_true",
+        help="Show the full traceback when a command fails")
+    parser_all.add_argument("-kg", "--keep-going", action="store_true",
+        help="Continue with remaining samples after a sample fails, then report all failures")
+    parser_all.add_argument("--dry-run", action="store_true",
+        help="Print the STAR/Salmon/fastp commands without running them")
     parser_all.set_defaults(func=main_all)
     
     args = parser.parse_args()
@@ -849,13 +893,20 @@ Examples:
         parser.print_help(sys.stderr)
         parser.exit(2)
     else:
+        if getattr(args, "dry_run", False):
+            set_dry_run(True)
         try:
             args.func(args)
         except (ValueError, FileNotFoundError, ImportError, RuntimeError) as e:
             # user-facing failures (bad input, missing tool, tool error) get a
-            # concise message; genuine bugs still raise with a traceback
+            # concise message; --verbose keeps the traceback for debugging
+            if getattr(args, "verbose", False):
+                raise
             logger.error(str(e))
             sys.exit(1)
+        finally:
+            # the flag is process-global; never leak it to a later main() call
+            set_dry_run(False)
 
 
 if __name__ == "__main__":

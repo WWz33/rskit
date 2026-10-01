@@ -189,6 +189,9 @@ geneB,0.00,1.00,2.32,2.58
 | `-tr` | `--trim` | alignment 前运行 fastp，并使用修剪后的 FASTQ。 |
 | `-fi` | `--force-index` | 即使 index 目录已存在，也强制重建 STAR index。 |
 | `-se` | `--skip-existing` | 目标输出已存在时跳过对应样本任务；已完成的 quant.sf、transcriptome BAM 和修剪后的 reads 会被复用。 |
+| `-kg` | `--keep-going` | 某个样本失败后继续处理其余样本，最后统一报告所有失败。 |
+| n/a | `--dry-run` | 只打印 STAR/Salmon/fastp 命令而不执行（同时跳过工具检查、导出、QC 和 manifest）。 |
+| `-v` | `--verbose` | 命令失败时输出完整 traceback，而不是一行摘要。 |
 | n/a | `--star-args` | STAR 高级参数。允许覆盖的冲突参数会替换 rskit 默认值；受保护参数包括 `--runThreadN`、`--genomeDir`、`--readFilesIn`、`--readFilesCommand`、`--outFileNamePrefix`、`--outSAMtype`、`--quantMode`、`--genomeFastaFiles` 和 `--sjdbGTFfile`。 |
 | n/a | `--salmon-args` | `salmon quant` 高级参数。允许覆盖的冲突参数会替换 rskit 默认值；受保护参数包括 `-t`/`--targets`、`-a`/`--alignments`、`-o`/`--output`、`-p`/`--threads` 和 `-l`/`--libType`。 |
 | n/a | `--fastp-args` | fastp 高级参数，只在使用 `--trim` 时生效。允许覆盖的冲突参数会替换 rskit 默认值；受保护参数包括 `-i`/`--in1`、`-I`/`--in2`、`-o`/`--out1`、`-O`/`--out2`、`-w`/`--thread`、报告路径、STDIN/STDOUT 和额外输出文件参数。 |
@@ -220,6 +223,9 @@ geneB,0.00,1.00,2.32,2.58
 | `-tr` | `--trim` | alignment 前运行 fastp。 |
 | `-fi` | `--force-index` | 即使 STAR index 已存在也强制重建。 |
 | `-se` | `--skip-existing` | 目标输出已存在时跳过样本任务；已完成的 quant.sf、transcriptome BAM 和修剪后的 reads 会被复用。 |
+| `-kg` | `--keep-going` | 某个样本失败后继续处理其余样本，最后统一报告所有失败。 |
+| n/a | `--dry-run` | 只打印 STAR/Salmon/fastp 命令而不执行（同时跳过工具检查、导出、QC 和 manifest）。 |
+| `-v` | `--verbose` | 命令失败时输出完整 traceback，而不是一行摘要。 |
 | n/a | `--star-args` | STAR 高级参数。允许覆盖的冲突参数会替换 rskit 默认值；受保护参数包括 `--runThreadN`、`--genomeDir`、`--readFilesIn`、`--readFilesCommand`、`--outFileNamePrefix`、`--outSAMtype`、`--quantMode`、`--genomeFastaFiles` 和 `--sjdbGTFfile`。 |
 | n/a | `--salmon-args` | `salmon quant` 高级参数。允许覆盖的冲突参数会替换 rskit 默认值；受保护参数包括 `-t`/`--targets`、`-a`/`--alignments`、`-o`/`--output`、`-p`/`--threads` 和 `-l`/`--libType`。 |
 | n/a | `--fastp-args` | fastp 高级参数，只在使用 `--trim` 时生效。允许覆盖的冲突参数会替换 rskit 默认值；受保护参数包括 `-i`/`--in1`、`-I`/`--in2`、`-o`/`--out1`、`-O`/`--out2`、`-w`/`--thread`、报告路径、STDIN/STDOUT 和额外输出文件参数。 |
@@ -243,6 +249,8 @@ DESeq2 差异表达分析。
 | `-l` | `--lfc` | summary 使用的绝对 log2 fold-change 阈值。默认：`2.0`。 |
 | `-F` | `--min-count` | DESeq2 预过滤的 gene total count 下限。默认：`10`；设为 `0` 可关闭。 |
 | `-t` | `--threads` | PyDESeq2 inference 使用的 CPU 数。 |
+| n/a | `--dry-run` | 只报告解析后的输入，不执行分析。 |
+| `-v` | `--verbose` | 命令失败时输出完整 traceback。 |
 
 ### `rskit validate` / `rskit doctor`
 
@@ -288,6 +296,8 @@ WGCNA 共表达网络分析。
 | `-mc` (`-mean`) | `--mean-cut` | Mean connectivity cutoff。默认：`100`。 |
 | `-md` (`-mediss`) | `--mediss-thresh` | 用于合并模块的 module eigengene dissimilarity threshold。默认：`0.2`。 |
 | `-tc` (`-tpm`) | `--tpm-cutoff` | PyWGCNA 过滤使用的 TPM cutoff。默认：`1`。 |
+| n/a | `--dry-run` | 只报告解析后的输入，不执行分析。 |
+| `-v` | `--verbose` | 命令失败时输出完整 traceback。 |
 
 ## Python API
 

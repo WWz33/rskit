@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Optional
 from rskit.cli_args import merge_extra_args
-from rskit.core.base import ToolBase, Tool, tool_version
+from rskit.core.base import ToolBase, Tool, is_dry_run, tool_version
 from rskit.config import StarConfig
 from rskit.utils.validators import validate_file, check_star_index
 
@@ -107,12 +107,14 @@ class StarIndexer:
             self.logger.info(f"STAR index already exists at {index_dir}, skipping")
             return True
 
-        # STAR genomeGenerate refuses a non-empty --genomeDir, so clear stale/partial indexes first
-        if index_path.exists():
-            self.logger.info(f"Clearing existing index directory {index_dir}")
-            shutil.rmtree(index_path)
+        if not is_dry_run():
+            # STAR genomeGenerate refuses a non-empty --genomeDir, so clear
+            # stale/partial indexes first (never in a dry run)
+            if index_path.exists():
+                self.logger.info(f"Clearing existing index directory {index_dir}")
+                shutil.rmtree(index_path)
+            index_path.mkdir(parents=True, exist_ok=True)
 
-        index_path.mkdir(parents=True, exist_ok=True)
         cmd = ["STAR", "--runThreadN", str(self.config.threads), "--runMode", "genomeGenerate",
                "--genomeDir", str(index_path), "--genomeFastaFiles", genome_fasta,
                "--sjdbGTFfile", gtf_file, "--sjdbOverhang", str(self.config.sjdb_overhang),
@@ -121,7 +123,8 @@ class StarIndexer:
         
         self.logger.info(f"Building STAR index in {index_dir}")
         built = self.tool._run_command(cmd)
-        self._write_fingerprint(index_path, genome_fasta, gtf_file)
+        if not is_dry_run():
+            self._write_fingerprint(index_path, genome_fasta, gtf_file)
         return built
 
     def _write_fingerprint(self, index_path: Path, genome_fasta: str, gtf_file: str) -> None:
@@ -145,16 +148,17 @@ class StarAligner:
     def align(self, index_dir: str, fq1: str, fq2: str, output_prefix: str, 
               sample_name: Optional[str] = None, auto_index: bool = False,
               genome_fasta: Optional[str] = None, gtf_file: Optional[str] = None) -> dict:
-        validate_file(fq1)
-        validate_file(fq2)
-        
-        if not Path(index_dir).exists() or not check_star_index(index_dir):
-            if auto_index and genome_fasta and gtf_file:
-                self.logger.info(f"Index not found, auto-creating at {index_dir}")
-                indexer = StarIndexer(self.config)
-                indexer.build_index(genome_fasta, gtf_file, index_dir)
-            else:
-                raise FileNotFoundError(f"STAR index not found at {index_dir}")
+        if not is_dry_run():
+            validate_file(fq1)
+            validate_file(fq2)
+
+            if not Path(index_dir).exists() or not check_star_index(index_dir):
+                if auto_index and genome_fasta and gtf_file:
+                    self.logger.info(f"Index not found, auto-creating at {index_dir}")
+                    indexer = StarIndexer(self.config)
+                    indexer.build_index(genome_fasta, gtf_file, index_dir)
+                else:
+                    raise FileNotFoundError(f"STAR index not found at {index_dir}")
         
         output_path = Path(output_prefix).parent
         output_path.mkdir(parents=True, exist_ok=True)

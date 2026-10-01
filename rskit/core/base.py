@@ -5,12 +5,27 @@ from typing import Optional
 from rskit.utils.logger import get_logger
 
 
+_DRY_RUN = False
+
+
+def set_dry_run(enabled: bool) -> None:
+    """Print external commands instead of running them (and skip preflight)."""
+    global _DRY_RUN
+    _DRY_RUN = enabled
+
+
+def is_dry_run() -> bool:
+    return _DRY_RUN
+
+
 def require_tools(*tool_names: str) -> None:
     """Fail fast when required external tools are missing from PATH.
 
     Called before any expensive work so the user sees a clear message instead
     of a FileNotFoundError traceback from deep inside a subprocess call.
     """
+    if _DRY_RUN:
+        return
     missing = [name for name in tool_names if shutil.which(name) is None]
     if missing:
         raise FileNotFoundError(
@@ -44,6 +59,9 @@ class ToolBase(ABC):
         return True
 
     def _run_command(self, cmd: list, cwd: str = None) -> bool:
+        if _DRY_RUN:
+            self.logger.info(f"[dry-run] {' '.join(map(str, cmd))}")
+            return True
         try:
             self.logger.info(f"Running: {' '.join(cmd)}")
             subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=True)

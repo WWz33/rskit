@@ -103,6 +103,7 @@ def run_samples_parallel(
     skip_existing=False,
     star_args="",
     salmon_args="",
+    keep_going=False,
 ):
     """Run alignment and quantification for multiple samples in parallel."""
     num_samples = len(samples)
@@ -135,9 +136,10 @@ def run_samples_parallel(
             except Exception as e:
                 failures.append((sample_name, e))
                 logger.error(f"[{sample_name}] Sample failed: {e}")
-                abort = True
-                for pending in futures:
-                    pending.cancel()
+                if not keep_going:
+                    abort = True
+                    for pending in futures:
+                        pending.cancel()
                 continue
             results[sample_name] = sample_results
             logger.info(f"Progress: {i}/{num_samples} completed")

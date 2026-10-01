@@ -189,6 +189,9 @@ Complete pipeline: quantification + DESeq2 analysis.
 | `-tr` | `--trim` | Run fastp before alignment and use trimmed FASTQ files. |
 | `-fi` | `--force-index` | Rebuild the STAR index even when an index directory already exists. |
 | `-se` | `--skip-existing` | Skip sample-level work when expected outputs already exist; completed quant.sf, transcriptome BAM, and clean reads are reused. |
+| `-kg` | `--keep-going` | Continue with the remaining samples after a sample fails, then report every failure at the end. |
+| n/a | `--dry-run` | Print the STAR/Salmon/fastp commands without running them (skips tool checks, exports, QC, and the manifest). |
+| `-v` | `--verbose` | Show the full traceback when a command fails instead of a one-line message. |
 | n/a | `--star-args` | Advanced STAR arguments. Allowed conflicts replace rskit defaults; protected options include `--runThreadN`, `--genomeDir`, `--readFilesIn`, `--readFilesCommand`, `--outFileNamePrefix`, `--outSAMtype`, `--quantMode`, `--genomeFastaFiles`, and `--sjdbGTFfile`. |
 | n/a | `--salmon-args` | Advanced `salmon quant` arguments. Allowed conflicts replace rskit defaults; protected options include `-t`/`--targets`, `-a`/`--alignments`, `-o`/`--output`, `-p`/`--threads`, and `-l`/`--libType`. |
 | n/a | `--fastp-args` | Advanced fastp arguments used only with `--trim`. Allowed conflicts replace rskit defaults; protected options include `-i`/`--in1`, `-I`/`--in2`, `-o`/`--out1`, `-O`/`--out2`, `-w`/`--thread`, report paths, STDIN/STDOUT, and extra output-file options. |
@@ -220,6 +223,9 @@ Complete quantification pipeline: index -> align -> quant -> gene-level table ex
 | `-tr` | `--trim` | Run fastp before alignment. |
 | `-fi` | `--force-index` | Rebuild the STAR index even if it exists. |
 | `-se` | `--skip-existing` | Skip sample work when expected output already exists; completed quant.sf, transcriptome BAM, and clean reads are reused. |
+| `-kg` | `--keep-going` | Continue with the remaining samples after a sample fails, then report every failure at the end. |
+| n/a | `--dry-run` | Print the STAR/Salmon/fastp commands without running them (skips tool checks, exports, QC, and the manifest). |
+| `-v` | `--verbose` | Show the full traceback when a command fails instead of a one-line message. |
 | n/a | `--star-args` | Advanced STAR arguments. Allowed conflicts replace rskit defaults; protected options include `--runThreadN`, `--genomeDir`, `--readFilesIn`, `--readFilesCommand`, `--outFileNamePrefix`, `--outSAMtype`, `--quantMode`, `--genomeFastaFiles`, and `--sjdbGTFfile`. |
 | n/a | `--salmon-args` | Advanced `salmon quant` arguments. Allowed conflicts replace rskit defaults; protected options include `-t`/`--targets`, `-a`/`--alignments`, `-o`/`--output`, `-p`/`--threads`, and `-l`/`--libType`. |
 | n/a | `--fastp-args` | Advanced fastp arguments used only with `--trim`. Allowed conflicts replace rskit defaults; protected options include `-i`/`--in1`, `-I`/`--in2`, `-o`/`--out1`, `-O`/`--out2`, `-w`/`--thread`, report paths, STDIN/STDOUT, and extra output-file options. |
@@ -243,6 +249,8 @@ DESeq2 differential expression analysis.
 | `-l` | `--lfc` | Absolute log2 fold-change threshold used for result summaries. Default: `2.0`. |
 | `-F` | `--min-count` | Minimum total count for DESeq2 gene prefiltering. Default: `10`; use `0` to disable. |
 | `-t` | `--threads` | Number of CPUs for PyDESeq2 inference. |
+| n/a | `--dry-run` | Report the resolved inputs without running the analysis. |
+| `-v` | `--verbose` | Show the full traceback when a command fails. |
 
 ### `rskit validate` / `rskit doctor`
 
@@ -288,6 +296,8 @@ WGCNA co-expression network analysis.
 | `-mc` (`-mean`) | `--mean-cut` | Mean connectivity cutoff. Default: `100`. |
 | `-md` (`-mediss`) | `--mediss-thresh` | Module eigengene dissimilarity threshold for merging modules. Default: `0.2`. |
 | `-tc` (`-tpm`) | `--tpm-cutoff` | TPM cutoff used by PyWGCNA filtering. Default: `1`. |
+| n/a | `--dry-run` | Report the resolved inputs without running the analysis. |
+| `-v` | `--verbose` | Show the full traceback when a command fails. |
 
 ## Python API
 

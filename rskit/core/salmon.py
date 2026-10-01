@@ -5,7 +5,7 @@ import gzip
 import numpy as np
 import pandas as pd
 
-from rskit.core.base import Tool
+from rskit.core.base import Tool, is_dry_run
 from rskit.cli_args import merge_extra_args
 from rskit.config import SalmonConfig
 from rskit.utils.gtf import iter_gtf
@@ -57,8 +57,9 @@ class SalmonQuantifier:
     
     def quantify(self, transcript_fasta: str, bam_file: str, output_dir: str,
                  sample_name: Optional[str] = None, skip_if_exists: bool = True) -> dict:
-        validate_file(transcript_fasta)
-        validate_file(bam_file)
+        if not is_dry_run():
+            validate_file(transcript_fasta)
+            validate_file(bam_file)
         
         output_path = Path(output_dir)
         quant_file = output_path / "quant.sf"
