@@ -41,6 +41,31 @@ class QuantExpressionTests(unittest.TestCase):
         self.addCleanup(self.tempdir.cleanup)
         self.root = Path(self.tempdir.name)
 
+    def _quant_args(self, **overrides) -> argparse.Namespace:
+        values = dict(
+            sample=None,
+            r1=None,
+            r2=None,
+            coldata="coldata.csv",
+            genome_fasta="genome.fa",
+            gtf_file="annotation.gtf",
+            transcript_fasta="transcripts.fa",
+            output_dir=str(self.root / "results"),
+            index_dir=None,
+            tx2gene=None,
+            threads=8,
+            jobs=1,
+            trim=False,
+            force_index=False,
+            skip_existing=False,
+            merge_sf=False,
+            star_args="",
+            salmon_args="",
+            fastp_args="",
+        )
+        values.update(overrides)
+        return argparse.Namespace(**values)
+
     def _write_quant_stub(self, sample_name: str) -> None:
         sample_dir = self.root / "03_quant" / sample_name
         sample_dir.mkdir(parents=True, exist_ok=True)
@@ -1099,28 +1124,37 @@ class QuantExpressionTests(unittest.TestCase):
 
         pipeline.aligner.align.assert_called_once()
 
-    def test_main_quant_writes_run_manifest(self) -> None:
-        args = argparse.Namespace(
-            sample=None,
-            r1=None,
-            r2=None,
-            coldata="coldata.csv",
-            genome_fasta="genome.fa",
-            gtf_file="annotation.gtf",
-            transcript_fasta="transcripts.fa",
-            output_dir=str(self.root / "results"),
-            index_dir=None,
-            tx2gene=None,
-            threads=8,
-            jobs=1,
-            trim=False,
-            force_index=False,
-            skip_existing=False,
-            merge_sf=False,
-            star_args="",
-            salmon_args="",
-            fastp_args="",
+    def test_quant_reuses_fresh_gene_tables_without_reimport(self) -> None:
+        args = self._quant_args()
+        reusable = {
+            "gene_counts": "gc.csv",
+            "gene_tpm": "tpm.csv",
+            "gene_log2_tpm": "l.csv",
+            "tx2gene": "t2g.tsv",
+        }
+
+        with mock.patch("rskit.cli.require_tools"), \
+             mock.patch("rskit.cli.parse_samples_from_coldata",
+                        return_value=[("sample1", Path("r1"), Path("r2"))]), \
+             mock.patch("rskit.cli.build_index_if_needed"), \
+             mock.patch("rskit.cli.prepare_samples",
+                        return_value={"sample1": {"fq1": "a", "fq2": "b"}}), \
+             mock.patch("rskit.cli.run_quantification", return_value={"sample1": {}}), \
+             mock.patch("rskit.cli.SalmonExpressionExporter.find_reusable_gene_tables",
+                        return_value=reusable), \
+             mock.patch("rskit.cli.export_quant_expression_tables") as export, \
+             mock.patch("rskit.cli.write_qc_summary"), \
+             mock.patch("rskit.cli.tool_version", return_value=None):
+            cli.main_quant(args)
+
+        export.assert_not_called()
+        manifest = json.loads(
+            (self.root / "results" / "03_quant" / "manifest.json").read_text(encoding="utf-8")
         )
+        self.assertEqual(manifest["outputs"]["gene_counts"], "gc.csv")
+
+    def test_main_quant_writes_run_manifest(self) -> None:
+        args = self._quant_args()
         exported = {
             "gene_counts": "gc.csv",
             "gene_tpm": "tpm.csv",
@@ -1135,6 +1169,8 @@ class QuantExpressionTests(unittest.TestCase):
              mock.patch("rskit.cli.prepare_samples",
                         return_value={"sample1": {"fq1": "a", "fq2": "b"}}), \
              mock.patch("rskit.cli.run_quantification", return_value={"sample1": {}}), \
+             mock.patch("rskit.cli.SalmonExpressionExporter.find_reusable_gene_tables",
+                        return_value=None), \
              mock.patch("rskit.cli.export_quant_expression_tables", return_value=exported), \
              mock.patch("rskit.cli.write_qc_summary"), \
              mock.patch("rskit.cli.tool_version", return_value="1.2.3"):
@@ -1150,27 +1186,7 @@ class QuantExpressionTests(unittest.TestCase):
         self.assertEqual(manifest["outputs"]["gene_counts"], "gc.csv")
 
     def test_run_quant_phase_writes_qc_summary_when_quantification_fails(self) -> None:
-        args = argparse.Namespace(
-            sample=None,
-            r1=None,
-            r2=None,
-            coldata="coldata.csv",
-            genome_fasta="genome.fa",
-            gtf_file="annotation.gtf",
-            transcript_fasta="transcripts.fa",
-            output_dir=str(self.root / "results"),
-            index_dir=None,
-            tx2gene=None,
-            threads=8,
-            jobs=1,
-            trim=False,
-            force_index=False,
-            skip_existing=True,
-            merge_sf=False,
-            star_args="",
-            salmon_args="",
-            fastp_args="",
-        )
+        args = self._quant_args(skip_existing=True)
 
         with mock.patch("rskit.cli.require_tools"), \
              mock.patch("rskit.cli.parse_samples_from_coldata",

@@ -350,6 +350,49 @@ class SalmonExpressionExporter:
             return counts_path
         return None
 
+    @staticmethod
+    def find_reusable_gene_tables(
+        salmon_dir: str,
+        sample_names: Sequence[str],
+    ) -> Optional[Dict[str, str]]:
+        """Return existing gene-level tables when they are fresh for these samples.
+
+        Re-importing every quant.sf is the only real work left on a fully
+        resumed run, so the tables are reused when none of them predates the
+        current samples' quant.sf files and the counts matrix covers exactly
+        the requested samples.
+        """
+        salmon_path = Path(salmon_dir)
+        outputs = {
+            "gene_counts": salmon_path / "gene_counts.csv",
+            "gene_tpm": salmon_path / "gene_tpm.csv",
+            "gene_log2_tpm": salmon_path / "gene_log2_tpm.csv",
+        }
+        if not all(path.exists() for path in outputs.values()):
+            return None
+
+        quant_files = [salmon_path / name / "quant.sf" for name in sample_names]
+        quant_files = [path for path in quant_files if path.exists()]
+        if not quant_files:
+            return None
+        newest_quant = max(path.stat().st_mtime for path in quant_files)
+        if any(path.stat().st_mtime < newest_quant for path in outputs.values()):
+            return None
+
+        try:
+            header = pd.read_csv(outputs["gene_counts"], nrows=0)
+        except (OSError, pd.errors.EmptyDataError):
+            return None
+        if set(str(column) for column in header.columns[1:]) != {
+            str(name) for name in sample_names
+        }:
+            return None
+
+        tx2gene = salmon_path / "tx2gene.tsv"
+        if tx2gene.exists():
+            outputs["tx2gene"] = tx2gene
+        return {name: str(path) for name, path in outputs.items()}
+
 
 def merge_salmon_quant_tables(
     salmon_dir: str,

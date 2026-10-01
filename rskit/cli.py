@@ -430,18 +430,27 @@ def run_quant_phase(args, workdirs: Dict[str, Path], command: str = "quant") -> 
         fastp_args=fastp_args,
         skip_existing=args.skip_existing,
     )
+    sample_names = [sample_name for sample_name, _, _ in samples_list]
     try:
         results = run_quantification(samples, genome_fasta, gtf_file, transcript_fasta,
                                      index_dir, workdirs, sample_plan.threads_per_sample,
                                      sample_plan.active_jobs, args.skip_existing,
                                      star_args=star_args, salmon_args=salmon_args)
-        expression_outputs = export_quant_expression_tables(
-            quant_dir=workdirs['quant'],
-            gtf_file=gtf_file,
-            tx2gene=args.tx2gene,
-            sample_names=[sample_name for sample_name, _, _ in samples_list],
-            merge_sf=args.merge_sf,
-        )
+        expression_outputs = None
+        if not args.merge_sf:
+            expression_outputs = SalmonExpressionExporter.find_reusable_gene_tables(
+                str(workdirs['quant']), sample_names
+            )
+            if expression_outputs is not None:
+                logger.info("Reusing existing gene-level tables (fresh for this run's samples)")
+        if expression_outputs is None:
+            expression_outputs = export_quant_expression_tables(
+                quant_dir=workdirs['quant'],
+                gtf_file=gtf_file,
+                tx2gene=args.tx2gene,
+                sample_names=sample_names,
+                merge_sf=args.merge_sf,
+            )
     except Exception:
         # a run that dies mid-way still deserves QC for the samples that finished
         write_qc_summary_safely(workdirs)
@@ -461,7 +470,7 @@ def run_quant_phase(args, workdirs: Dict[str, Path], command: str = "quant") -> 
                 "transcript_fasta": transcript_fasta,
                 "tx2gene": args.tx2gene,
             },
-            "samples": [sample_name for sample_name, _, _ in samples_list],
+            "samples": sample_names,
             "index": {
                 "dir": str(index_dir),
                 "fingerprint": read_index_fingerprint(index_dir),

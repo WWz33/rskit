@@ -1,5 +1,7 @@
 import gzip
+import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -229,6 +231,57 @@ class SalmonQuantifierTests(unittest.TestCase):
             found = SalmonExpressionExporter.find_existing_gene_counts(str(quant_dir))
             self.assertEqual(found, counts_file)
 
+
+    def test_find_reusable_gene_tables_requires_fresh_matching_export(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            quant_dir = Path(tempdir) / "03_quant"
+            for name in ("sample1", "sample2"):
+                (quant_dir / name).mkdir(parents=True)
+                (quant_dir / name / "quant.sf").write_text("stub", encoding="utf-8")
+            old = time.time() - 3600
+            for name in ("sample1", "sample2"):
+                os.utime(quant_dir / name / "quant.sf", (old, old))
+            (quant_dir / "gene_counts.csv").write_text(
+                "gene_id,sample1,sample2\ng1,1,2\n", encoding="utf-8"
+            )
+            (quant_dir / "gene_tpm.csv").write_text(
+                "gene_id,sample1,sample2\ng1,1.0,2.0\n", encoding="utf-8"
+            )
+            (quant_dir / "gene_log2_tpm.csv").write_text(
+                "gene_id,sample1,sample2\ng1,1.0,2.0\n", encoding="utf-8"
+            )
+            (quant_dir / "tx2gene.tsv").write_text(
+                "transcript_id\tgene_id\nt1\tg1\n", encoding="utf-8"
+            )
+
+            reusable = SalmonExpressionExporter.find_reusable_gene_tables(
+                str(quant_dir), ["sample1", "sample2"]
+            )
+            self.assertIsNotNone(reusable)
+            self.assertEqual(reusable["gene_counts"], str(quant_dir / "gene_counts.csv"))
+            self.assertEqual(reusable["tx2gene"], str(quant_dir / "tx2gene.tsv"))
+
+            # a different sample set must trigger a re-export
+            self.assertIsNone(
+                SalmonExpressionExporter.find_reusable_gene_tables(str(quant_dir), ["sample1"])
+            )
+
+            # a quant.sf newer than the tables must trigger a re-export
+            newer = time.time() + 3600
+            os.utime(quant_dir / "sample2" / "quant.sf", (newer, newer))
+            self.assertIsNone(
+                SalmonExpressionExporter.find_reusable_gene_tables(
+                    str(quant_dir), ["sample1", "sample2"]
+                )
+            )
+
+            # missing tables cannot be reused
+            (quant_dir / "gene_tpm.csv").unlink()
+            self.assertIsNone(
+                SalmonExpressionExporter.find_reusable_gene_tables(
+                    str(quant_dir), ["sample1", "sample2"]
+                )
+            )
 
     def test_merge_forwards_sample_names_to_exclude_stale_dirs(self) -> None:
         from unittest import mock
