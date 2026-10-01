@@ -63,6 +63,7 @@ class QuantExpressionTests(unittest.TestCase):
             star_args="",
             salmon_args="",
             fastp_args="",
+            salmon_direct=False,
         )
         values.update(overrides)
         return argparse.Namespace(**values)
@@ -1102,14 +1103,14 @@ class QuantExpressionTests(unittest.TestCase):
         )
 
     def test_main_quant_preflight_rejects_missing_tools(self) -> None:
-        args = argparse.Namespace(output_dir=str(self.root / "results"), trim=False)
+        args = self._quant_args(trim=False)
 
         with mock.patch("shutil.which", return_value=None):
             with self.assertRaisesRegex(FileNotFoundError, "STAR"):
                 cli.main_quant(args)
 
     def test_main_quant_preflight_checks_fastp_when_trimming(self) -> None:
-        args = argparse.Namespace(output_dir=str(self.root / "results"), trim=True)
+        args = self._quant_args(trim=True)
 
         with mock.patch("shutil.which", return_value=None):
             with self.assertRaisesRegex(FileNotFoundError, "fastp"):
@@ -1395,6 +1396,67 @@ class QuantExpressionTests(unittest.TestCase):
 
         self.assertIn("bad", str(ctx.exception))
         pipeline.quantifier.quantify.assert_called_once()
+
+    def test_pipeline_run_salmon_direct_skips_alignment(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            pipeline = RNAseqPipeline(PipelineConfig(output_dir=tempdir))
+            pipeline.aligner.align = mock.Mock()
+            pipeline.indexer.build_index = mock.Mock()
+            pipeline.quantifier.quantify_from_reads = mock.Mock(return_value={"quant": "q"})
+
+            pipeline.run(
+                samples={"sample1": {"fq1": "r1", "fq2": "r2"}},
+                genome_fasta=None,
+                gtf_file=None,
+                transcript_fasta="transcripts.fa",
+                index_dir=str(Path(tempdir) / "index"),
+                output_dir=str(Path(tempdir) / "02_bam"),
+                quant_output_dir=str(Path(tempdir) / "03_quant"),
+                salmon_direct=True,
+            )
+
+        pipeline.aligner.align.assert_not_called()
+        pipeline.indexer.build_index.assert_not_called()
+        pipeline.quantifier.quantify_from_reads.assert_called_once()
+
+    def test_main_quant_salmon_direct_skips_index_and_annotation(self) -> None:
+        args = self._quant_args(
+            genome_fasta=None, gtf_file=None, tx2gene=None, salmon_direct=True
+        )
+
+        with mock.patch("rskit.cli.require_tools") as require, \
+             mock.patch("rskit.cli.parse_samples_from_coldata",
+                        return_value=[("sample1", Path("r1"), Path("r2"))]), \
+             mock.patch("rskit.cli.build_index_if_needed") as build_index, \
+             mock.patch("rskit.cli.prepare_samples",
+                        return_value={"sample1": {"fq1": "a", "fq2": "b"}}), \
+             mock.patch("rskit.cli.run_quantification",
+                        return_value={"sample1": {}}) as run_quant, \
+             mock.patch("rskit.cli.SalmonExpressionExporter.find_reusable_gene_tables",
+                        return_value=None), \
+             mock.patch("rskit.cli.export_quant_expression_tables") as export, \
+             mock.patch("rskit.cli.write_qc_summary"), \
+             mock.patch("rskit.cli.tool_version", return_value=None):
+            cli.main_quant(args)
+
+        require.assert_called_once_with("salmon")
+        build_index.assert_not_called()
+        self.assertTrue(run_quant.call_args.kwargs["salmon_direct"])
+        export.assert_not_called()  # no annotation -> per-sample quant.sf only
+        manifest = json.loads(
+            (self.root / "results" / "03_quant" / "manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertIsNone(manifest["index"])
+        self.assertTrue(manifest["options"]["salmon_direct"])
+
+    def test_main_all_salmon_direct_requires_annotation_for_counts(self) -> None:
+        args = self._quant_args(
+            genome_fasta=None, gtf_file=None, tx2gene=None, salmon_direct=True
+        )
+
+        with mock.patch("rskit.cli.require_tools"):
+            with self.assertRaisesRegex(ValueError, "tx2gene"):
+                cli.main_all(args)
 
     def test_lfc_shrink_coefficient_matches_design_column_naming(self) -> None:
         # pydeseq2 names LFC columns after the design matrix (formulaic treatment coding)

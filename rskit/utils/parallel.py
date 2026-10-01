@@ -45,29 +45,39 @@ def calculate_sample_plan(total_threads: int, requested_jobs: int, num_samples: 
 
 
 def process_single_sample(args):
-    """Process a single sample: alignment + quantification."""
-    sample_name, sample_data, index_dir, transcript_fasta, workdirs, threads, skip_existing, star_args, salmon_args = args
-    
+    """Process a single sample: alignment + quantification (or direct Salmon)."""
+    (sample_name, sample_data, index_dir, transcript_fasta, workdirs, threads,
+     skip_existing, star_args, salmon_args, salmon_direct) = args
+
     from rskit.core.star import StarAligner, alignment_complete
     from rskit.core.salmon import SalmonQuantifier
     from rskit.config import StarConfig, SalmonConfig
-    
+
     aligner = StarAligner(StarConfig(threads=threads, extra_args=star_args))
     quantifier = SalmonQuantifier(SalmonConfig(threads=threads, extra_args=salmon_args))
-    
+
     # Setup output directories
-    sample_bam_dir = Path(workdirs['bam']) / sample_name
-    sample_bam_dir.mkdir(parents=True, exist_ok=True)
-    
     sample_quant_dir = Path(workdirs['quant']) / sample_name
     sample_quant_dir.mkdir(parents=True, exist_ok=True)
-    
+    sample_bam_dir = Path(workdirs['bam']) / sample_name
+    if not salmon_direct:
+        sample_bam_dir.mkdir(parents=True, exist_ok=True)
+
     # same trust rule as the sequential path: a crashed run can leave a truncated quant.sf
     quant_file = sample_quant_dir / "quant.sf"
     if skip_existing and quant_file.exists() and quant_file.stat().st_size > 0:
         logger.info(f"[{sample_name}] Output exists, skipping")
         return sample_name, {"quantification": {"quant": str(quant_file)}}
-    
+
+    if salmon_direct:
+        logger.info(f"[{sample_name}] Quantifying from reads with {threads} threads...")
+        quant_results = quantifier.quantify_from_reads(
+            transcript_fasta, sample_data["fq1"], sample_data["fq2"],
+            str(sample_quant_dir), sample_name=sample_name, skip_if_exists=skip_existing,
+        )
+        logger.info(f"[{sample_name}] Completed")
+        return sample_name, {"quantification": quant_results}
+
     # Run alignment
     align_prefix = str(sample_bam_dir / f"{sample_name}_")
     if skip_existing and alignment_complete(align_prefix):
@@ -104,6 +114,7 @@ def run_samples_parallel(
     star_args="",
     salmon_args="",
     keep_going=False,
+    salmon_direct=False,
 ):
     """Run alignment and quantification for multiple samples in parallel."""
     num_samples = len(samples)
@@ -117,7 +128,8 @@ def run_samples_parallel(
     )
     
     sample_args = [
-        (name, data, index_dir, transcript_fasta, workdirs, threads_per_sample, skip_existing, star_args, salmon_args)
+        (name, data, index_dir, transcript_fasta, workdirs, threads_per_sample,
+         skip_existing, star_args, salmon_args, salmon_direct)
         for name, data in samples.items()
     ]
     

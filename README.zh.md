@@ -89,6 +89,14 @@ rskit quant -s sample1 -1 sample1_R1.fq.gz -2 sample1_R2.fq.gz -g genome.fa -gtf
 
 默认批量定量为 `-j 1`。`-t/--threads` 是总线程数，`-j/--jobs` 是并发样本数；例如 `-t 100 -j 20` 为每个样本分配 5 线程。使用 `-ms/--merge-sf` 时，从本次运行的 `03_quant/*/quant.sf` 重新生成基因级 CSV。
 
+### 我只有 transcriptome（没有基因组或索引）
+
+用 Salmon 的 selective alignment 直接从 reads 定量，完全跳过 STAR。基因级表格仍然需要注释文件。
+
+```bash
+rskit quant -S coldata.csv -gf transcripts.fa -gtf annotation.gtf -o results/ --salmon-direct
+```
+
 ### 我需要调整 STAR、Salmon 或 fastp 参数
 
 把底层软件的高级参数作为一个带引号的字符串传入。如果允许覆盖的参数与 rskit 默认值冲突，用户传入的值会替换默认值。rskit 会拒绝会改变输入、输出、报告、index、library type 或线程数的参数。
@@ -177,9 +185,10 @@ geneB,0.00,1.00,2.32,2.58
 | 简写 | 长参数 | 说明 |
 |------|--------|------|
 | `-S` | `--coldata` | 必需的 coldata 文件，包含 `sample,id,condition,r1,r2`；相对 `r1`/`r2` 路径按该文件所在目录解析。 |
-| `-g` | `--genome-fasta` | 必需的 genome FASTA，用于构建或检查 STAR index。 |
-| `-gtf` | `--gtf-file` | 必需的 GTF/GFF annotation，用于 STAR，并在未提供 `--tx2gene` 时生成 `tx2gene.tsv`。 |
+| `-g` | `--genome-fasta` | genome FASTA，用于构建或检查 STAR index。使用 `--salmon-direct` 时可不提供。 |
+| `-gtf` | `--gtf-file` | GTF/GFF annotation，用于 STAR，并在未提供 `--tx2gene` 时生成 `tx2gene.tsv`。使用 `--salmon-direct` 时可不提供。 |
 | `-gf` | `--transcript-fasta` | 必需的 transcript FASTA，用于 Salmon 定量。 |
+| n/a | `--salmon-direct` | 直接用 Salmon 从 reads 定量，跳过 STAR、基因组和索引。`-g`/`-gtf` 变为可选；未提供 `--gtf-file`/`--tx2gene` 时只写出各样本的 quant.sf。 |
 | `-o` | `--output-dir` | 必需的流程输出目录；rskit 会在其中创建 `00_index/`、`02_bam/`、`03_quant/` 和 `04_deseq2/`。 |
 | `-idx` | `--index-dir` | 可选的已有 STAR index 目录；默认使用 `<output-dir>/00_index`。rskit 会在索引目录记录构建输入（`.rskit_index.json`），当前 FASTA/GTF 与构建时不一致时告警；需要重建时使用 `-fi`。 |
 | `-t2g` | `--tx2gene` | 可选 transcript-to-gene mapping；未提供时从 `--gtf-file` 写出 `03_quant/tx2gene.tsv`。 |
@@ -211,9 +220,10 @@ geneB,0.00,1.00,2.32,2.58
 | `-S` | `--coldata` | 批量样本表，包含 `sample,r1,r2`；用于替代 `--sample`、`--r1` 和 `--r2`。 |
 | `-1` | `--r1` | 单样本模式的 first read 文件。 |
 | `-2` | `--r2` | 单样本模式的 second read 文件。 |
-| `-g` | `--genome-fasta` | 必需的 genome FASTA，用于构建或检查 STAR index。 |
-| `-gtf` | `--gtf-file` | 必需 annotation，用于 STAR 和 `tx2gene.tsv` 生成。 |
-| `-gf` | `--transcript-fasta` | 必需 transcript FASTA，用于 Salmon。 |
+| `-g` | `--genome-fasta` | genome FASTA，用于构建或检查 STAR index。使用 `--salmon-direct` 时可不提供。 |
+| `-gtf` | `--gtf-file` | annotation，用于 STAR 和 `tx2gene.tsv` 生成。使用 `--salmon-direct` 时可不提供。 |
+| `-gf` | `--transcript-fasta` | 必需的 transcript FASTA，用于 Salmon。 |
+| n/a | `--salmon-direct` | 直接用 Salmon 从 reads 定量，跳过 STAR、基因组和索引。仍需提供注释（`--gtf-file` 或 `--tx2gene`），否则 DESeq2 拿不到基因级 counts。 |
 | `-o` | `--output-dir` | 必需输出/工作目录。 |
 | `-idx` | `--index-dir` | 可选已有 STAR index 目录；默认使用 `<output-dir>/00_index`。rskit 会在索引目录记录构建输入（`.rskit_index.json`），当前 FASTA/GTF 与构建时不一致时告警；需要重建时使用 `-fi`。 |
 | `-t2g` | `--tx2gene` | 可选 transcript-to-gene mapping，用于基因级导出；未提供时从 `--gtf-file` 生成。 |

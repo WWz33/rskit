@@ -282,7 +282,7 @@ def run_quantification(samples: Dict[str, Dict], genome_fasta: str, gtf_file: st
                        transcript_fasta: str, index_dir: Path, workdirs: Dict[str, Path],
                        threads_per_sample: int, jobs: int, skip_existing: bool = False,
                        star_args: str = "", salmon_args: str = "",
-                       keep_going: bool = False) -> Dict:
+                       keep_going: bool = False, salmon_direct: bool = False) -> Dict:
     """Run quantification pipeline (parallel or sequential)"""
     num_samples = len(samples)
     
@@ -290,7 +290,7 @@ def run_quantification(samples: Dict[str, Dict], genome_fasta: str, gtf_file: st
         return run_samples_parallel(samples, str(index_dir), transcript_fasta, 
                                     workdirs, threads_per_sample, jobs, skip_existing,
                                     star_args=star_args, salmon_args=salmon_args,
-                                    keep_going=keep_going)
+                                    keep_going=keep_going, salmon_direct=salmon_direct)
     else:
         config = PipelineConfig(
             star=StarConfig(threads=threads_per_sample, extra_args=star_args),
@@ -309,6 +309,7 @@ def run_quantification(samples: Dict[str, Dict], genome_fasta: str, gtf_file: st
             force_index=False,
             skip_existing=skip_existing,
             keep_going=keep_going,
+            salmon_direct=salmon_direct,
         )
 
 
@@ -385,9 +386,24 @@ def run_quant_phase(args, workdirs: Dict[str, Path], command: str = "quant") -> 
     star_args = getattr(args, "star_args", "")
     salmon_args = getattr(args, "salmon_args", "")
     fastp_args = getattr(args, "fastp_args", "")
+    salmon_direct = getattr(args, "salmon_direct", False)
+
+    # Salmon-direct needs no genome or index, only the transcriptome; the
+    # alignment route needs both inputs up front
+    if salmon_direct:
+        if command == "all" and not (args.gtf_file or args.tx2gene):
+            raise ValueError(
+                "--salmon-direct with 'all' needs --gtf-file or --tx2gene so DESeq2 "
+                "has gene-level counts"
+            )
+    else:
+        if not args.genome_fasta:
+            raise ValueError("--genome-fasta is required unless --salmon-direct is used")
+        if not args.gtf_file:
+            raise ValueError("--gtf-file is required unless --salmon-direct is used")
 
     # Fail fast on missing external tools before any expensive work starts
-    required_tools = ["STAR", "salmon"]
+    required_tools = ["salmon"] if salmon_direct else ["STAR", "salmon"]
     if getattr(args, "trim", False):
         required_tools.append("fastp")
     require_tools(*required_tools)
@@ -396,8 +412,8 @@ def run_quant_phase(args, workdirs: Dict[str, Path], command: str = "quant") -> 
     threads = cap_threads_to_available_cpus(args.threads)
 
     # Convert paths to absolute
-    genome_fasta = str(Path(args.genome_fasta).resolve())
-    gtf_file = str(Path(args.gtf_file).resolve())
+    genome_fasta = str(Path(args.genome_fasta).resolve()) if args.genome_fasta else None
+    gtf_file = str(Path(args.gtf_file).resolve()) if args.gtf_file else None
     transcript_fasta = str(Path(args.transcript_fasta).resolve())
 
     # Parse samples (and validate reads) before any expensive index build
@@ -416,7 +432,8 @@ def run_quant_phase(args, workdirs: Dict[str, Path], command: str = "quant") -> 
 
     # Determine and check index directory
     index_dir = Path(args.index_dir).resolve() if args.index_dir else workdirs['index']
-    build_index_if_needed(index_dir, genome_fasta, gtf_file, threads, args.force_index, star_args)
+    if not salmon_direct:
+        build_index_if_needed(index_dir, genome_fasta, gtf_file, threads, args.force_index, star_args)
 
     # Calculate sample scheduling plan
     num_samples = len(samples_list)
@@ -439,7 +456,8 @@ def run_quant_phase(args, workdirs: Dict[str, Path], command: str = "quant") -> 
                                      index_dir, workdirs, sample_plan.threads_per_sample,
                                      sample_plan.active_jobs, args.skip_existing,
                                      star_args=star_args, salmon_args=salmon_args,
-                                     keep_going=getattr(args, "keep_going", False))
+                                     keep_going=getattr(args, "keep_going", False),
+                                     salmon_direct=salmon_direct)
         if is_dry_run():
             logger.info("Dry run: skipping gene-level export, QC summary, and manifest")
             return samples_list, {}
@@ -451,13 +469,20 @@ def run_quant_phase(args, workdirs: Dict[str, Path], command: str = "quant") -> 
             if expression_outputs is not None:
                 logger.info("Reusing existing gene-level tables (fresh for this run's samples)")
         if expression_outputs is None:
-            expression_outputs = export_quant_expression_tables(
-                quant_dir=workdirs['quant'],
-                gtf_file=gtf_file,
-                tx2gene=args.tx2gene,
-                sample_names=sample_names,
-                merge_sf=args.merge_sf,
-            )
+            if gtf_file is None and args.tx2gene is None:
+                logger.warning(
+                    "No --gtf-file or --tx2gene given; skipping gene-level export "
+                    "(per-sample quant.sf files are still written)"
+                )
+                expression_outputs = {}
+            else:
+                expression_outputs = export_quant_expression_tables(
+                    quant_dir=workdirs['quant'],
+                    gtf_file=gtf_file,
+                    tx2gene=args.tx2gene,
+                    sample_names=sample_names,
+                    merge_sf=args.merge_sf,
+                )
     except Exception:
         # a run that dies mid-way still deserves QC for the samples that finished
         write_qc_summary_safely(workdirs)
@@ -478,14 +503,15 @@ def run_quant_phase(args, workdirs: Dict[str, Path], command: str = "quant") -> 
                 "tx2gene": args.tx2gene,
             },
             "samples": sample_names,
-            "index": {
-                "dir": str(index_dir),
-                "fingerprint": read_index_fingerprint(index_dir),
-            },
+            "index": (
+                None if salmon_direct
+                else {"dir": str(index_dir), "fingerprint": read_index_fingerprint(index_dir)}
+            ),
             "options": {
                 "trim": args.trim,
                 "skip_existing": args.skip_existing,
                 "merge_sf": args.merge_sf,
+                "salmon_direct": salmon_direct,
                 "star_args": star_args,
                 "salmon_args": salmon_args,
                 "fastp_args": fastp_args,
@@ -657,8 +683,10 @@ def main():
     parser_quant.add_argument("-S", "--coldata", help="Sample file (CSV/TSV) with columns: sample,r1,r2")
     parser_quant.add_argument("-1", "--r1", help="First read file")
     parser_quant.add_argument("-2", "--r2", help="Second read file")
-    parser_quant.add_argument("-g", "--genome-fasta", dest="genome_fasta", required=True, help="Genome FASTA file")
-    parser_quant.add_argument("-gtf", "--gtf-file", dest="gtf_file", required=True, help="GTF annotation file")
+    parser_quant.add_argument("-g", "--genome-fasta", dest="genome_fasta",
+        help="Genome FASTA file; required unless --salmon-direct is used")
+    parser_quant.add_argument("-gtf", "--gtf-file", dest="gtf_file",
+        help="GTF annotation file; required unless --salmon-direct is used")
     parser_quant.add_argument("-gf", "--transcript-fasta", dest="transcript_fasta", required=True, help="Transcript FASTA file")
     parser_quant.add_argument("-o", "--output-dir", dest="output_dir", required=True, help="Output directory (work directory)")
     parser_quant.add_argument("-idx", "--index-dir", dest="index_dir", help="STAR index directory (default: <output_dir>/00_index)")
@@ -677,6 +705,8 @@ def main():
         help="Advanced Salmon quant arguments. User values replace rskit defaults unless the option manages inputs, outputs, library type, or threads.")
     parser_quant.add_argument("--fastp-args", default="",
         help="Advanced fastp arguments. User values replace rskit defaults unless the option manages inputs, outputs, reports, or threads.")
+    parser_quant.add_argument("--salmon-direct", dest="salmon_direct", action="store_true",
+        help="Quantify directly from the reads with Salmon, skipping STAR, the genome, and the index")
     parser_quant.add_argument("-v", "--verbose", action="store_true",
         help="Show the full traceback when a command fails")
     parser_quant.add_argument("-kg", "--keep-going", action="store_true",
@@ -839,10 +869,10 @@ Examples:
     
     parser_all.add_argument("-S", "--coldata", required=True,
         help="Coldata file (CSV/TSV) with columns: sample,id,condition,r1,r2")
-    parser_all.add_argument("-g", "--genome-fasta", dest="genome_fasta", required=True,
-        help="Genome FASTA file")
-    parser_all.add_argument("-gtf", "--gtf-file", dest="gtf_file", required=True,
-        help="GTF annotation file")
+    parser_all.add_argument("-g", "--genome-fasta", dest="genome_fasta",
+        help="Genome FASTA file; required unless --salmon-direct is used")
+    parser_all.add_argument("-gtf", "--gtf-file", dest="gtf_file",
+        help="GTF annotation file; required unless --salmon-direct is used")
     parser_all.add_argument("-gf", "--transcript-fasta", dest="transcript_fasta", required=True,
         help="Transcript FASTA file")
     parser_all.add_argument("-o", "--output-dir", dest="output_dir", required=True,
@@ -880,6 +910,8 @@ Examples:
     parser_all.add_argument("-F", "--min-count", dest="prefilter_min_count", type=int, default=10,
         help="Minimum total count for DESeq2 gene prefiltering; use 0 to disable")
     
+    parser_all.add_argument("--salmon-direct", dest="salmon_direct", action="store_true",
+        help="Quantify directly from the reads with Salmon, skipping STAR, the genome, and the index")
     parser_all.add_argument("-v", "--verbose", action="store_true",
         help="Show the full traceback when a command fails")
     parser_all.add_argument("-kg", "--keep-going", action="store_true",

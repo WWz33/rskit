@@ -47,6 +47,13 @@ SALMON_QUANT_PROTECTED_OPTIONS = {
     "--threads",
     "-l",
     "--libType",
+    # read inputs (mapping-based / direct mode)
+    "-r",
+    "--unmatedReads",
+    "-1",
+    "--mates1",
+    "-2",
+    "--mates2",
 }
 
 class SalmonQuantifier:
@@ -91,6 +98,46 @@ class SalmonQuantifier:
         
         return {"quant": str(quant_file), "lib_format_counts": str(output_path / "lib_format_counts.json")}
     
+    def quantify_from_reads(self, transcript_fasta: str, read1: str, read2: str,
+                            output_dir: str, sample_name: Optional[str] = None,
+                            skip_if_exists: bool = True) -> dict:
+        """Quantify directly from reads (selective alignment), without STAR.
+
+        Only the transcriptome is needed, so users without a genome build can
+        still get gene-level counts/TPM.
+        """
+        if not is_dry_run():
+            validate_file(transcript_fasta)
+            validate_file(read1)
+            validate_file(read2)
+
+        output_path = Path(output_dir)
+        quant_file = output_path / "quant.sf"
+        if skip_if_exists and quant_file.exists() and quant_file.stat().st_size > 0:
+            self.logger.info(f"Quantification output already exists at {output_dir}, skipping")
+            existing = {"quant": str(quant_file)}
+            lib_counts = output_path / "lib_format_counts.json"
+            if lib_counts.exists():
+                existing["lib_format_counts"] = str(lib_counts)
+            return existing
+
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        cmd = ["salmon", "quant", "-t", transcript_fasta, "-l", self.config.lib_type,
+               "-1", read1, "-2", read2, "-o", output_dir, "-p", str(self.config.threads)]
+        if self.config.seq_bias:
+            cmd.append("--seqBias")
+        if self.config.gc_bias:
+            cmd.append("--gcBias")
+        if self.config.pos_bias:
+            cmd.append("--posBias")
+        cmd = merge_extra_args(cmd, self.config.extra_args, SALMON_QUANT_PROTECTED_OPTIONS)
+
+        self.logger.info(f"Quantifying {sample_name or 'sample'} from reads with Salmon")
+        self.tool._run_command(cmd)
+
+        return {"quant": str(quant_file), "lib_format_counts": str(output_path / "lib_format_counts.json")}
+
     def validate_inputs(self) -> bool:
         return self.tool._check_tool_installed()
 

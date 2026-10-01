@@ -149,6 +149,7 @@ class QuantSchedulingTests(unittest.TestCase):
             skip_existing,
             "",
             "",
+            False,
         ), workdirs
 
     def test_skip_existing_accepts_non_empty_quant(self) -> None:

@@ -89,6 +89,14 @@ rskit quant -s sample1 -1 sample1_R1.fq.gz -2 sample1_R2.fq.gz -g genome.fa -gtf
 
 Default batch quantification uses `-j 1`. `-t/--threads` is the total thread budget, and `-j/--jobs` is the sample concurrency. For example, `-t 100 -j 20` gives each sample 5 threads. Use `-ms/--merge-sf` to regenerate gene-level CSV files from this run's `03_quant/*/quant.sf` folders.
 
+### I only have a transcriptome (no genome or index)
+
+Quantify straight from the reads with Salmon's selective alignment and skip STAR entirely. Gene-level tables still need an annotation.
+
+```bash
+rskit quant -S coldata.csv -gf transcripts.fa -gtf annotation.gtf -o results/ --salmon-direct
+```
+
 ### I need to tune STAR, Salmon, or fastp
 
 Pass advanced tool arguments as a quoted string. If an allowed argument conflicts with an rskit default, the user-provided value replaces the default. rskit rejects arguments that would change managed inputs, outputs, reports, indexes, library type, or thread counts.
@@ -177,8 +185,8 @@ Complete pipeline: quantification + DESeq2 analysis.
 | Short | Long | Description |
 |-------|------|-------------|
 | `-S` | `--coldata` | Required coldata file with `sample,id,condition,r1,r2`. Relative `r1`/`r2` paths are resolved from this file. |
-| `-g` | `--genome-fasta` | Required genome FASTA used to build or check the STAR index. |
-| `-gtf` | `--gtf-file` | Required GTF/GFF annotation used by STAR and to create `tx2gene.tsv` when `--tx2gene` is not provided. |
+| `-g` | `--genome-fasta` | Genome FASTA used to build or check the STAR index. Required unless `--salmon-direct` is used. |
+| `-gtf` | `--gtf-file` | GTF/GFF annotation used by STAR and to create `tx2gene.tsv` when `--tx2gene` is not provided. Required unless `--salmon-direct` is used. |
 | `-gf` | `--transcript-fasta` | Required transcript FASTA used by Salmon quantification. |
 | `-o` | `--output-dir` | Required workflow output directory; rskit creates `00_index/`, `02_bam/`, `03_quant/`, and `04_deseq2/` under it. |
 | `-idx` | `--index-dir` | Optional existing STAR index directory; defaults to `<output-dir>/00_index`. rskit records the build inputs in `.rskit_index.json` inside the index directory and warns when the current FASTA/GTF differ; rebuild with `-fi`. |
@@ -211,9 +219,11 @@ Complete quantification pipeline: index -> align -> quant -> gene-level table ex
 | `-S` | `--coldata` | Batch sample table with `sample,r1,r2`; replaces `--sample`, `--r1`, and `--r2`. |
 | `-1` | `--r1` | First read file for single-sample mode. |
 | `-2` | `--r2` | Second read file for single-sample mode. |
-| `-g` | `--genome-fasta` | Required genome FASTA used to build or check the STAR index. |
-| `-gtf` | `--gtf-file` | Required annotation used by STAR and `tx2gene.tsv` generation. |
+| `-g` | `--genome-fasta` | Genome FASTA used to build or check the STAR index. Required unless `--salmon-direct` is used. |
+| `-gtf` | `--gtf-file` | Annotation used by STAR and `tx2gene.tsv` generation. Required unless `--salmon-direct` is used. |
 | `-gf` | `--transcript-fasta` | Required transcript FASTA used by Salmon. |
+| n/a | `--salmon-direct` | Quantify directly from the reads with Salmon, skipping STAR, the genome, and the index. An annotation (`--gtf-file` or `--tx2gene`) is still required so DESeq2 has gene-level counts. |
+| n/a | `--salmon-direct` | Quantify directly from the reads with Salmon, skipping STAR, the genome, and the index. `-g`/`-gtf` become optional; without `--gtf-file`/`--tx2gene` only per-sample quant.sf files are written. |
 | `-o` | `--output-dir` | Required output/work directory. |
 | `-idx` | `--index-dir` | Optional existing STAR index directory; defaults to `<output-dir>/00_index`. rskit records the build inputs in `.rskit_index.json` inside the index directory and warns when the current FASTA/GTF differ; rebuild with `-fi`. |
 | `-t2g` | `--tx2gene` | Optional transcript-to-gene mapping for gene-level export; otherwise generated from `--gtf-file`. |

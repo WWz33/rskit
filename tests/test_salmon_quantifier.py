@@ -232,6 +232,58 @@ class SalmonQuantifierTests(unittest.TestCase):
             self.assertEqual(found, counts_file)
 
 
+    def test_quantify_from_reads_uses_read_inputs_not_bam(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            transcript_fasta = root / "transcripts.fa"
+            transcript_fasta.write_text(">tx1\nACGT\n", encoding="utf-8")
+            read1 = root / "s_R1.fq.gz"
+            read2 = root / "s_R2.fq.gz"
+            read1.write_text("stub", encoding="utf-8")
+            read2.write_text("stub", encoding="utf-8")
+
+            quantifier = SalmonQuantifier(SalmonConfig(threads=4))
+
+            with mock.patch("rskit.core.base.Tool._run_command", return_value=True) as run_command:
+                result = quantifier.quantify_from_reads(
+                    transcript_fasta=str(transcript_fasta),
+                    read1=str(read1),
+                    read2=str(read2),
+                    output_dir=str(root / "quant"),
+                    sample_name="sample1",
+                    skip_if_exists=False,
+                )
+
+        command = run_command.call_args.args[0]
+        self.assertEqual(command[:2], ["salmon", "quant"])
+        self.assertIn("-t", command)
+        self.assertNotIn("-a", command)  # no alignment BAM involved
+        self.assertEqual(command[command.index("-1") + 1], str(read1))
+        self.assertEqual(command[command.index("-2") + 1], str(read2))
+        self.assertEqual(result["quant"], str(root / "quant" / "quant.sf"))
+
+    def test_quantify_from_reads_rejects_protected_read_options(self) -> None:
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            transcript_fasta = root / "transcripts.fa"
+            transcript_fasta.write_text(">tx1\nACGT\n", encoding="utf-8")
+            read1 = root / "s_R1.fq.gz"
+            read2 = root / "s_R2.fq.gz"
+            read1.write_text("stub", encoding="utf-8")
+            read2.write_text("stub", encoding="utf-8")
+
+            quantifier = SalmonQuantifier(SalmonConfig(extra_args="-1 other.fq"))
+
+            with self.assertRaisesRegex(ValueError, "-1"):
+                quantifier.quantify_from_reads(
+                    transcript_fasta=str(transcript_fasta),
+                    read1=str(read1),
+                    read2=str(read2),
+                    output_dir=str(root / "quant"),
+                    sample_name="sample1",
+                    skip_if_exists=False,
+                )
+
     def test_find_reusable_gene_tables_requires_fresh_matching_export(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
             quant_dir = Path(tempdir) / "03_quant"
