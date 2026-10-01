@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rskit"
-version = "0.2.0"
+version = "0.3.0"
 description = "Python interface for RNA-seq analysis tools"
 readme = "README.md"
 license = { text = "MIT" }
@@ -39,3 +39,15 @@ Repository = "https://github.com/WWz33/rskit"
 
 [tool.setuptools.packages.find]
 include = ["rskit*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+# errors + pyflakes + import sorting: catches dead imports/names without
+# imposing a repo-wide restyle
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
